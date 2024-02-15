@@ -37,9 +37,6 @@ Note: Must have java >8 installed as well to run Rabinizer.
 # Run:
 
 ```
-python3 run.py <YOUR CONFIGURATION HERE, Stored in ./cfgs/>.yaml --restart
+python3 run.py hydra.job.chdir=False hydra.output_subdir=null --config-name=flatworld.yaml
 ```
-For example:
-```
-python3 run.py flatworld_continuous.yaml --restart
-```
+

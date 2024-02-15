@@ -6,7 +6,7 @@ import matplotlib.patches as mpatches
 from matplotlib import colors
 import io
 from PIL import Image
-from gym_minigrid.minigrid import *
+from minigrid.minigrid_env import *
 
 class SlipperyGrid(MiniGridEnv):
     """
@@ -58,6 +58,8 @@ class SlipperyGrid(MiniGridEnv):
         self.slip_probability = slip_probability
         self.sink_states = sink_states
         self.labels = None
+        self.rho_alphabet = None
+        self.rho_locations = None
 
         # directional actions
         self.action_map = [
@@ -67,24 +69,30 @@ class SlipperyGrid(MiniGridEnv):
             "down",
             "stay"
         ]
-
+        mission_space = MissionSpace(mission_func=lambda : "Do the LTL task.",
+                                         ordered_placeholders=None)
         super().__init__(
+            mission_space=mission_space,
             width = max(self.shape[1], 3),
             height=max(self.shape[0],3),
             max_steps=1000,
             # Set this to True for maximum speed
             see_through_walls=True,
+            render_mode="rgb_array",
+            agent_view_size= 3,
+            highlight=False
         )
         super().reset()
-
-        self.observation_space = gym.spaces.Discrete(shape[0] * shape[1])
+        self.observation_space = gym.spaces.Box(low=np.array([0,0]), high=np.array(shape), dtype=np.int32)
+        #self.observation_space = gym.spaces.Discrete(shape[0] * shape[1])
         self.action_space = gym.spaces.Discrete(5)
         self.beta = 1-np.max(self.slip_probability) if isinstance(self.slip_probability, np.ndarray) else 1-self.slip_probability #min non-zero prob
         assert self.beta > 0
 
     def reset(self):
         self.current_state = self.initial_state.copy()
-        return self.state_to_index(self.current_state), {}
+        return self.current_state, {}
+        # return self.state_to_index(self.current_state), {}
     
     def state_to_index(self, state):
         return state[0] * self.shape[1] + state[1]
@@ -92,9 +100,23 @@ class SlipperyGrid(MiniGridEnv):
     def index_to_state(self, index):
         n_columns = self.shape[1]
         return [index // n_columns, index % n_columns]
+
+    def compute_rho(self):
+        # return a map from string to value for each robustness fxn
+        all_robustness_vals = []
+
+        for label in self.rho_alphabet:
+            if label not in self.rho_locations:
+                all_robustness_vals.append(0)
+            else:
+                locations = np.array(self.rho_locations[label])
+                dist = np.sum(np.abs(locations - self.current_state), axis=1)
+                all_robustness_vals.append(-1 * min(dist))
+
+        return np.array(all_robustness_vals)
     
     def T(self, state, action):
-        state = self.index_to_state(state)
+        #state = self.index_to_state(state)
         slipperiness = self.slip_probability[state[0], state[1]] if isinstance(self.slip_probability, np.ndarray) else self.slip_probability
 
         p = np.zeros(self.observation_space.n)
@@ -139,8 +161,8 @@ class SlipperyGrid(MiniGridEnv):
             # slipperiness
             if np.random.uniform() < slipperiness:
                 action_idx = np.random.choice(self.action_space.n)
-
-            action = self.action_map[action_idx]
+            # import pdb; pdb.set_trace()
+            action = self.action_map[int(action_idx)]
 
             # grid movement dynamics:
             if action == 'right':
@@ -166,11 +188,15 @@ class SlipperyGrid(MiniGridEnv):
             if 'obstacle' in self.state_label(next_state):
                 next_state = self.current_state
 
-        # update current state
+        # update current state        
+        if 'grass' in self.state_label(next_state):
+            reward = -1.0
+        else:
+            reward = 0.0
         prev_state = self.current_state
         self.current_state = next_state
 
-        next_state = self.state_to_index(next_state)
+        #next_state = self.state_to_index(next_state)
         # prev_state = self.state_to_index(prev_state)
         try:
             cost = self.cost[prev_state[0], prev_state[1], action_idx]
@@ -178,15 +204,13 @@ class SlipperyGrid(MiniGridEnv):
             import pdb; pdb.set_trace()
         done = False
         info = {'state': self.current_state}
-
-        return next_state, cost, done, info
+        info["rhos"] = self.compute_rho()
+        self.info = info
+        return next_state, reward, done, self.info
     
     def cost_shaping(self, prev_index, cur_index, action, automaton_movement, accepting_state_reached, rejecting_state_reached):
         
         cost = 1
-
-        # if (automaton_movement and not rejecting_state_reached):
-        #     cost = .5
         
         if accepting_state_reached:
             cost = 0
@@ -203,9 +227,9 @@ class SlipperyGrid(MiniGridEnv):
     def did_succeed(self, *args, **kw):
         return 0
 
-    def label(self, state_idx):
+    def label(self, state):
         # labels = self.labels.get(self.state, None)
-        state = self.index_to_state(state_idx)
+        #state = self.index_to_state(state_idx)
         labels = [self.labels[state[0], state[1]]]
         if labels is None:
             return {}
@@ -214,31 +238,27 @@ class SlipperyGrid(MiniGridEnv):
         
     def set_state(self, state):
         assert (state >= 0) and (state <= self.observation_space.n), 'Setting Environment to invalid state'
-        self.current_state = self.index_to_state(state)
+        self.current_state = state #self.index_to_state(state)
     
     def get_state(self):
-        return self.state_to_index(self.current_state)
+        self.current_state
+        #return self.state_to_index(self.current_state)
 
     def state_label(self, state):
         return self.labels[state[0], state[1]]
     
     # For rendering
     def _gen_grid(self, width, height):
-        self.agent_pos = self.current_state[::-1]
+        self.agent_pos = tuple(self.current_state[::-1])
         self.agent_dir = 0
         self.grid = Grid(width, height)
         self.mission = ''
-
-        # for row in range(len(labels)):
-        #     for col, label in enumerate(labels[row]):
-        #         if label == 'safe': continue
-        #         self.grid.set(row, col, Floor())
     
-    def render(self, mode='human', **kw):
-        self.agent_pos = self.current_state[::-1]
+    def render(self, mode='rgb_array', **kw):
+        self.agent_pos = tuple(self.current_state[::-1])
         self.agent_dir = 0
         # print(self.agent_pos[::-1])
-        super().render()
+        return super().render()
 
 
             

@@ -1,15 +1,16 @@
 from .base_envs.slippery_grid import SlipperyGrid
 from functools import partial
 import numpy as np
-from gym_minigrid.minigrid import Floor, Key
+from minigrid.core.world_object import Floor, Key
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib import colors
 from scipy.stats.kde import gaussian_kde
 import PIL.Image as Image
 from numpy import uint8
-from gym_minigrid.minigrid import *
+from minigrid.core.world_object import *
 import os
+from collections import defaultdict
 
 OBJECT_TO_IDX.update({'ghost': len(OBJECT_TO_IDX)})
 for i in range(4):
@@ -48,116 +49,97 @@ class Minecraft(SlipperyGrid):
         # define the labellings
         labels = np.empty([self.shape[0], self.shape[1]], dtype=object)
         labels[0:10, 0:10] = 'safe'
-        labels[0:3, 5] = 'obstacle'
         labels[2, 7:10] = 'obstacle'
-        # labels[0][0] = labels[4][5] = labels[8][1] = labels[8][7] = 'grass'
-        # labels[2][2] = labels[7][3] = labels[5][7] = labels[9][9] = 'wood'
-        # labels[0][3] = labels[4][0] = labels[6][8] = labels[9][4] = 'iron'
-        # labels[6][1] = labels[6][5] = 
+        labels[5, 0:3] = 'obstacle'
+        labels[2][0] = 'wood'
         labels[4][9] = 'work_bench'
         # labels[2][4] = labels[9][0] = labels[7][7] = 'tool_shed'
         labels[0][7] = 'gold'
 
         # Used for tracking the agent for visualization purposes
         self.coins = {}
-        
-        for col in range(len(labels)):
-            for row, label in enumerate(labels[col]):
+        self.rho_alphabet = ["obstacle", "grass", "wood", "work_bench", "gold"]
+        self.rho_locations = defaultdict(list)
+        self.labels = labels
+        self.add_random_rewards()
+        for col in range(len(self.labels)):
+            for row, label in enumerate(self.labels[col]):
                 if label == 'safe': 
                     self.coins[(row, col)] = Coin('coin_0', 'green', None)
-                    
                     continue
 
                 if label == 'obstacle':
                     X = Floor('red')
                     self.grid.set(row, col, X)
                     self.coins[(row, col)] = Coin('coin_1', 'green', X)
-                # if label == 'grass':
-                #     minecraft.grid.set(row, col, Floor('green'))
-                # if label == 'wood':
-                #     minecraft.grid.set(row, col, Floor('blue'))
+                elif label == 'wood':
+                    X = Floor('purple')
+                    self.grid.set(row, col, X)
+                    self.coins[(row, col)] = Coin('coin_1', 'green', X)
+                elif label == 'grass':
+                    X = Floor('green')
+                    self.grid.set(row, col, X)
+                    self.coins[(row, col)] = Coin('coin_1', 'green', X)
                 # if label == 'iron':
                 #     minecraft.grid.set(row, col, Floor('purple'))
-                if label == 'work_bench':
+                elif label == 'work_bench':
                     X = Floor('blue')
                     self.grid.set(row, col, X)
                     self.coins[(row, col)] = Coin('coin_2', 'green', X)
                 # if label == 'tool_shed':
                 #     minecraft.grid.set(row, col, Floor('blue'))
-                if label == 'gold':
+                elif label == 'gold':
                     X = Floor('yellow')
                     self.grid.set(row, col, X)
                     self.coins[(row, col)] = Coin('coin_3', 'green', X)
+                self.rho_locations[label].append([row, col])
 
         # override the labels
-        self.labels = labels
+        #self.labels
         self.cost = np.ones((shape[0], shape[1], 5))
-
-        
+        self.render_live = False
+        self.render()
     
-    def render(self, states = [], save_dir=None, mode='human', **kw):
+    def add_random_obstacle(self, num_obs=10):
+        obs_locations = np.random.randint(10, size=(num_obs,2))
+        for location in obs_locations:
+            if self.labels[location[0]][location[1]] == 'safe':
+                self.labels[location[0]][location[1]] = 'obstacle'
+    
+    def add_random_rewards(self, num_rews=10):
+        num_added_rews = 0
+        while num_added_rews < num_rews:
+            rew_location = np.random.randint(10, size=(2))
+            if self.labels[rew_location[0]][rew_location[1]] == 'safe':
+                self.labels[rew_location[0]][rew_location[1]] = 'grass'
+                num_added_rews += 1
+                    
+    
+    def render(self, states = [], save_dir=None, mode='rgb_array', **kw):
 
         rows = []
         cols = []
         if states:
-            dist = np.array([self.index_to_state(x) for x in states])
+            dist = np.array([x for x in states])
             cols = dist[...,0].reshape(-1)
             rows = dist[...,1].reshape(-1)
             
             for row, col in zip(rows, cols):
                 self.coins[row, col].toggle_on(self, [row, col])
-
-        super().render(mode, highlight=False, **kw)
+        # import pdb; pdb.set_trace()
+        img = super().render(mode, highlight=True, **kw)
         
         for row, col in zip(rows, cols):
             self.coins[row, col].toggle_off(self, [row, col])
+        # self.window.fig.savefig("minecraft.png")
+        import pdb; pdb.set_trace()
+        return img
         
-        if save_dir is not None:
-            self.window.fig.savefig(save_dir)
+        # if save_dir is not None:
 
 
 
 # create a SlipperyGrid object
 shape = [10, 10]
-minecraft = Minecraft(shape=shape, initial_state=[9, 2], slip_probability=0.)
+minecraft = Minecraft(shape=shape, initial_state=[9, 5], slip_probability=0.)
 
-
-
-
-
-    
-# def test(n_traj, sim, policy, J, c_min, map= lambda x: x):
-#     traj = []
-#     costs = []
-#     random_actions = []
-#     for n in range(n_traj):
-#         costs.append([])
-#         traj.append([sim.reset()])
-#         random_actions.append([])
-#         for t in range(100):
-#             try:
-#                 sim.mdp.render()
-#             except:
-#                 pass
-
-#             try:
-#                 action = policy[map(traj[-1][-1])]
-#                 random_act = 0
-#             except:
-#                 # logger.warn('Policy sees new state: %d' % map(traj[-1][-1]))
-#                 # import pdb; pdb.set_trace()
-#                 random_act = 1
-#                 action = np.random.choice(sim.mdp.action_space.n)
-
-#             next_state, cost, _, info = sim.step(action)
-
-#             traj[-1].append(next_state)
-#             costs[-1].append(1)
-#             random_actions[-1].append(random_act)
-#             # if info['goal']: break
-    
-#     print([np.sum(cost) for cost in costs], np.mean([np.sum(cost) for cost in costs]), np.std([np.sum(cost) for cost in costs]))
-#     return np.array([[[sim.mdp.index_to_state(sim.mapstate_idx][0]) for state_idx in T] for T in traj])
-
-# minecraft.plot = partial(plot, minecraft)
-# minecraft.test = test

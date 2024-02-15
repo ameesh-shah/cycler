@@ -13,3 +13,8 @@ networkx
 dotmap
 shapely
 pillow
+hydra-core
+wandb
+omegaconf
+moviepy
+torchrl
