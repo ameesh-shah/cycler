@@ -18,7 +18,6 @@ ROOT = Path(__file__).parent
 def main(cfg):
     np.random.seed(cfg.init_seed)
     seeds = [np.random.randint(1e6) for _ in range(cfg.n_seeds)]
-    torch.manual_seed(seeds[0])
     np.random.seed(seeds[0])
     env = hydra.utils.instantiate(cfg.env)
     automaton = AutomatonRunner(Automaton(**cfg['ltl']))
@@ -34,6 +33,7 @@ def main(cfg):
     for seed in seeds:
         results_dict = {}
         results_path = save_dir + '/results_dict_{}.pkl'.format(seed)
+        torch.manual_seed(seeds[0])
         np.random.seed(seed)
         reward_sequence, buchi_traj_sequence, mdp_traj_sequence, test_reward_sequence, test_buchi_sequence, test_mdp_sequence, eval_results = run_baseline(cfg, env, automaton, save_dir, baseline, seed, method=method)
         results_dict["crewards"] = reward_sequence
@@ -49,7 +49,7 @@ def main(cfg):
     print(cfg)
 
 def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo"):
-    if baseline_type == "ours":
+    if baseline_type == "ours" or baseline_type == "cycler":
         reward_type = 2
         to_hallucinate = True
     elif baseline_type == "no_mdp":

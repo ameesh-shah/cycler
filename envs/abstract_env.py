@@ -211,12 +211,6 @@ class Simulator(gym.Env):
 
             #return -1, True
         for idx, buchi_cycle in enumerate(self.all_accepting_cycles):
-            # if terminal: # terminal state
-            #     cycle_rewards.append(-1.0)
-                        # if we take a sink transition, penalize that.
-            # if (not self.automaton.is_rejecting(b)) and self.automaton.is_rejecting(b_):
-            #     # if we take a sink transition
-            #     cycle_rewards.append(-1.0 * self.lambda_val)
             if b in buchi_cycle:
                 # if b in self.automaton.automaton.accepting_states and b_ not in self.automaton.automaton.accepting_states: 
                 #     cycle_rewards.append(0.0) # if we're leaving an accept state, don't reward it
@@ -297,15 +291,13 @@ class Simulator(gym.Env):
             phi_val = self.evaluate_buchi_edge(stl_node.children[0], rhos)
             return -1 * phi_val
 
-    def constrained_reward(self, 
+    def compute_cycle_rewards(self, 
                             terminal, 
                             b, 
                             b_, 
-                            mdp_reward,
                             rhos
                             ):
         # will have multiple choices of reward structure
-        # TODO: add an automatic structure selection mechanism
         if self.reward_type == 2:  # if it's a cycler-based method
             ltl_reward, done = self.ltl_reward_2(terminal, b, b_)
         elif self.reward_type == 0: # use quantitative semantics
@@ -313,9 +305,7 @@ class Simulator(gym.Env):
         else:
             ltl_reward, done = self.ltl_reward_1(terminal, b, b_) 
         # Here, we moved the lambda calculations to each reward function itself.
-        if self.reward_type > 2:
-            return ltl_reward, done, {"ltl_reward": ltl_reward, "mdp_reward": mdp_reward}
-        return mdp_reward + ltl_reward, done, {"ltl_reward": ltl_reward, "mdp_reward": mdp_reward}
+        return ltl_reward, done
     
     # @timeit
     def step(self, action, is_eps=False):
