@@ -71,18 +71,25 @@ class Trajectory:
     def copy(self):
         return deepcopy(self)
 
+def transform_qs_reward(ltl_reward, lambda_val, min_rho):
+    # potentially hacky, but subtract the min value from LTL reward where the values are zero for max computation purposes
+    new_ltl_reward = np.where(ltl_reward == 0, lambda_val * min_rho, ltl_reward)
+    return new_ltl_reward
 
 class RolloutBuffer:
-    def __init__(self, state_shp, action_shp, lambda_val, max_ = 1000, to_hallucinate=False) -> None:
+    def __init__(self, state_shp, action_shp, lambda_val, min_rho_val, max_ = 1000, to_hallucinate=False, quant=False) -> None:
         self.states = torch.zeros((max_,) + state_shp)
         self.trajectories = []#torch.zeros()
         self.batch_trajectories = []
         self.first_action_was_epsilon = False
         self.action_placeholder = np.zeros(action_shp)
         self.max_ = max_
+        self.lambda_val = lambda_val
+        self.min_rho_val = min_rho_val
         self.to_hallucinate = to_hallucinate
         self.main_trajectory = None
-    
+        self.quant = quant
+
     def add_experience(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal, is_accepts):
         if self.to_hallucinate:
             self.update_trajectories(env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal)
@@ -106,7 +113,11 @@ class RolloutBuffer:
         #         cycle_idx = np.argmax(np.sum(cycle_rewards[previous_visit_idx:i + 1], axis=0))
         #         ltl_rewards[previous_visit_idx:i + 1] = cycle_rewards[previous_visit_idx:i + 1, cycle_idx]
         #         previous_visit_idx = i
-        cycle_idx = np.argmax(np.sum(cycle_rewards[previous_visit_idx:len(cycle_rewards) + 1], axis=0))
+        if self.quant:
+            xformed_rewards = transform_qs_reward(cycle_rewards, self.lambda_val, self.min_rho_val)
+            cycle_idx = np.argmax(np.sum(xformed_rewards[previous_visit_idx:len(xformed_rewards) + 1], axis=0))
+        else:
+            cycle_idx = np.argmax(np.sum(cycle_rewards[previous_visit_idx:len(cycle_rewards) + 1], axis=0))
         ltl_rewards[previous_visit_idx:len(cycle_rewards) + 1] = cycle_rewards[previous_visit_idx:len(cycle_rewards) + 1, cycle_idx]
         traj.ltl_rewards = list(ltl_rewards)
         assert(len(traj.ltl_rewards) == len(traj.rewards))

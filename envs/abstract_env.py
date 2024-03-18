@@ -241,13 +241,13 @@ class Simulator(gym.Env):
         cycle_rewards = []
         for idx, buchi_cycle in enumerate(self.all_accepting_cycles):
             # if we take a sink transition, penalize that.
-            if (not self.automaton.is_rejecting(b)) and self.automaton.is_rejecting(b_):
-                # if we take a sink transition
-                min_delta = self.mdp.rho_min - self.mdp.rho_max
-                cycle_rewards.append(min_delta) #* self.qs_lambda_val)
-            elif b in buchi_cycle:
-                rho = self.evaluate_buchi_edge(buchi_cycle[b].stl, rhos) + 1e-8 # add a small value to avoid the zero xform
-                delta = rho - self.previous_rhos[idx]
+            # if (not self.automaton.is_rejecting(b)) and self.automaton.is_rejecting(b_):
+            #     # if we take a sink transition
+            #     min_delta = self.mdp.rho_min - self.mdp.rho_max
+            #     cycle_rewards.append(min_delta) #* self.qs_lambda_val)
+            if b in buchi_cycle:
+                rho = self.evaluate_buchi_edge(buchi_cycle[b].stl, rhos)  
+                delta = rho - self.previous_rhos[idx] + 1e-8 # add a small value to avoid the zero xform
                 delta = delta * self.qs_lambda_val
                 # self.previous_rhos[idx] = rho
                 if b_ == buchi_cycle[b].child.id:

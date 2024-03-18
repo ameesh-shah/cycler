@@ -19,7 +19,6 @@ def main(cfg):
     np.random.seed(cfg.init_seed)
     seeds = [np.random.randint(1e6) for _ in range(cfg.n_seeds)]
     np.random.seed(seeds[0])
-    env = hydra.utils.instantiate(cfg.env)
     automaton = AutomatonRunner(Automaton(**cfg['ltl']))
     # make logging dir for wandb to pull from, if necessary
     save_dir = os.path.join(os.getcwd(), 'experiments', cfg['run_name'] + "_" + cfg["baseline"])
@@ -35,6 +34,7 @@ def main(cfg):
         results_path = save_dir + '/results_dict_{}.pkl'.format(seed)
         torch.manual_seed(seeds[0])
         np.random.seed(seed)
+        env = hydra.utils.instantiate(cfg.env)
         reward_sequence, buchi_traj_sequence, mdp_traj_sequence, test_reward_sequence, test_buchi_sequence, test_mdp_sequence, eval_results = run_baseline(cfg, env, automaton, save_dir, baseline, seed, method=method)
         results_dict["crewards"] = reward_sequence
         results_dict["btrajs"] = buchi_traj_sequence
@@ -57,16 +57,13 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
         to_hallucinate = True
     elif baseline_type == "baseline":  # baseline method
         reward_type = 1
-        pretrain_trajs = 0
         to_hallucinate = True
     elif baseline_type == "ppo_only":  # baseline method
         reward_type = 1
-        pretrain_trajs = 0
         to_hallucinate = False
     elif baseline_type == "quant":  # baseline method
         reward_type = 0
-        pretrain_trajs = 0
-        to_hallucinate = True
+        to_hallucinate = False
     elif baseline_type == "eval": # evaluate an existing model
         assert cfg["load_path"] is not None
         assert cfg["load_path"] != ""

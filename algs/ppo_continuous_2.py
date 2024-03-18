@@ -33,7 +33,8 @@ class PPO:
             env_space, 
             act_space, 
             gamma, 
-            param, 
+            param,
+            rho_val, 
             to_hallucinate=False,
             model_path=None
             ) -> None:
@@ -51,6 +52,7 @@ class PPO:
         self.ltl_lambda = param['lambda']
         self.original_lambda = param['lambda']
         self.qs_lambda = param['lambda_qs']
+        self.is_quant = param['baseline'] == "quant"
 
         self.policy = ActorCritic(env_space, act_space, action_std_init, param).to(device)
         if model_path and model_path != "":
@@ -71,8 +73,10 @@ class PPO:
             env_space['mdp'].shape, 
             act_space['mdp'].shape,
             self.ltl_lambda, 
+            rho_val,
             param['replay_buffer_size'], 
-            to_hallucinate)
+            to_hallucinate,
+            quant=self.is_quant)
         
         self.gamma = gamma
         self.num_updates_called = 0
@@ -187,10 +191,6 @@ class PPO:
         self.buffer.clear()
         return loss.mean(), {"policy_grad": policy_grad.detach().mean(), "val_loss": normalized_val_loss.detach().item(), "entropy_loss": entropy_loss.detach().mean()}
     
-def transform_qs_reward(ltl_reward, agent, env):
-    # potentially hacky, but subtract the min value from LTL reward where the values are zero for max computation purposes
-    new_ltl_reward = np.where(ltl_reward == 0, agent.qs_lambda * (env.mdp.rho_min - env.mdp.rho_max), ltl_reward)
-    return new_ltl_reward
 
 def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False, save_dir=None, eval=False):
     states, buchis = [], []
@@ -232,12 +232,8 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
         
         # here, transform the ltl reward so that it can be used properly in computation
         og_ltl_r = ltl_r
-        #xformed_ltl_reward = og_ltl_r #((og_ltl_r - env.mdp.rho_min) / (env.mdp.rho_max - env.mdp.rho_min))
         # transforming delta
-        if env.reward_type == 0:
-            xformed_ltl_reward = transform_qs_reward(og_ltl_r, agent, env)
-        else:
-            xformed_ltl_reward = og_ltl_r
+
 
         agent.buffer.add_experience(
             env, 
@@ -245,7 +241,7 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
             state['buchi'], 
             action, 
             mdp_reward,
-            xformed_ltl_reward, # transformed ltl quantitative semantics for purpose of cycler computation
+            og_ltl_r, # transformed ltl quantitative semantics for purpose of cycler computation
             next_state['mdp'], 
             next_state['buchi'], 
             info['rhos'],
@@ -262,7 +258,7 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
         #     env.render()
         # agent.buffer.atomics.append(info['signal'])
         mdp_ep_reward += mdp_reward
-        sum_xformed_rewards += xformed_ltl_reward
+        sum_xformed_rewards += og_ltl_r
         ltl_rewards.append(og_ltl_r)
         constr_ep_reward += (agent.original_lambda * (visit_buchi) + mdp_reward)
         buchi_visits.append(visit_buchi)
@@ -292,9 +288,11 @@ def run_ppo_continuous_2(param, runner, env, to_hallucinate=False, visualize=Fal
             env.observation_space, 
             env.action_space, 
             param['gamma'], 
-            param, 
+            param,
+            env.mdp.rho_min - env.mdp.rho_max, 
             to_hallucinate,
-            model_path=param['load_path'])
+            model_path=param['load_path'],
+            )
     
     fixed_state, _ = env.reset()
     best_creward = -1 * float('inf')
@@ -396,6 +394,7 @@ def eval_agent(param, env, agent, visualize=False, save_dir=None):
         env.action_space, 
         param['gamma'], 
         param, 
+        env.mdp.rho_min - env.mdp.rho_max,
         True,
         model_path=param['load_path'])
     fixed_state, _ = env.reset()
