@@ -35,6 +35,8 @@ class PPO:
             gamma, 
             param,
             rho_val, 
+            rho_alphabet,
+            stl_phi,
             to_hallucinate=False,
             model_path=None
             ) -> None:
@@ -52,7 +54,9 @@ class PPO:
         self.ltl_lambda = param['lambda']
         self.original_lambda = param['lambda']
         self.qs_lambda = param['lambda_qs']
-        self.is_quant = param['baseline'] == "quant"
+        self.off_policy_updates = param["ppo"]["off_policy"]
+        self.rho_alphabet = rho_alphabet
+        self.stl_phi = stl_phi
 
         self.policy = ActorCritic(env_space, act_space, action_std_init, param).to(device)
         if model_path and model_path != "":
@@ -68,15 +72,21 @@ class PPO:
 
         self.policy_old = ActorCritic(env_space, act_space, action_std_init, param).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
-
+        if param['baseline'] in ['quant', 'bhnr', 'tltl']:
+            lambdaval = self.qs_lambda
+        else:
+            lambdaval = self.ltl_lambda
         self.buffer = RolloutBuffer(
             env_space['mdp'].shape, 
             act_space['mdp'].shape,
-            self.ltl_lambda, 
+            lambdaval, 
             rho_val,
+            self.rho_alphabet,
+            self.stl_phi,
+            param['baseline'],
             param['replay_buffer_size'], 
             to_hallucinate,
-            quant=self.is_quant)
+            )
         
         self.gamma = gamma
         self.num_updates_called = 0
@@ -129,7 +139,7 @@ class PPO:
             old_states, old_buchis, old_actions, old_next_buchis, rewards, \
                 lrewards, old_action_idxs, old_logprobs, old_edges, old_terminals \
                     = self.buffer.get_torch_data(
-                        self.gamma, self.batch_size
+                        self.gamma, self.batch_size, offpolicy=self.off_policy_updates
                     )
             
             if len(old_states) == 0:
@@ -209,7 +219,11 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
     
     # total_action_time = 0
     # total_experience_time = 0
-    for t in range(1, param['ppo']['T']):  # Don't infinite loop while learning
+    if eval:
+        horizon = param['eval_horizon']
+    else:
+        horizon = param['ppo']['T']
+    for t in range(1, horizon):  # Don't infinite loop while learning
         # tic = time.time()
         action, action_idx, is_eps, log_prob, all_logprobs = agent.select_action(state, testing)
         # total_action_time += time.time() - tic 
@@ -290,6 +304,8 @@ def run_ppo_continuous_2(param, runner, env, to_hallucinate=False, visualize=Fal
             param['gamma'], 
             param,
             env.mdp.rho_min - env.mdp.rho_max, 
+            env.mdp.rho_alphabet,
+            env.parsed_stl,
             to_hallucinate,
             model_path=param['load_path'],
             )
@@ -395,6 +411,8 @@ def eval_agent(param, env, agent, visualize=False, save_dir=None):
         param['gamma'], 
         param, 
         env.mdp.rho_min - env.mdp.rho_max,
+        env.mdp.rho_alphabet,
+        env.parsed_stl,
         True,
         model_path=param['load_path'])
     fixed_state, _ = env.reset()
@@ -412,7 +430,7 @@ def eval_agent(param, env, agent, visualize=False, save_dir=None):
             im = Image.fromarray(img)
             if img_path is not None:
                 im.save(img_path)
-    mdp_test_reward, ltl_test_reward, test_creward, test_bvisits, img, bvisit_traj, mdp_traj = rollout(env, agent, param, i_episode, None, testing=True, visualize=visualize)
+    mdp_test_reward, ltl_test_reward, test_creward, test_bvisits, img, bvisit_traj, mdp_traj = rollout(env, agent, param, i_episode, None, testing=True, visualize=visualize, eval=True)
     print("Buchi Visits and MDP Rewards for fixed (test) policy at Eval Time:")
     print("Buchi Visits:", test_bvisits)
     print("MDP Reward:", mdp_test_reward)

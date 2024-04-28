@@ -114,7 +114,7 @@ class FlatWorld(gym.Env):
     def compute_rho(self):
         # return a map from string to value for each robustness fxn
         # normalization = np.linalg.norm(self.observation_space.high - self.observation_space.low)
-        all_robustness_vals = np.zeros(len(self.circles))
+        all_robustness_vals = np.zeros(len(self.circles_map))
         for idx, (region_symbol, circle) in enumerate(self.circles_map.items()):
             coordinates = circle[:2]
             radius = self.circles_map[region_symbol][-1]

@@ -4,6 +4,7 @@ import wandb
 import torch
 import numpy as np
 import os
+import mtl
 from omegaconf import OmegaConf
 from datetime import datetime
 from envs.abstract_env import Simulator
@@ -55,14 +56,20 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
     elif baseline_type == "no_mdp":
         reward_type = 3
         to_hallucinate = True
-    elif baseline_type == "baseline":  # baseline method
+    elif baseline_type == "baseline":  # LCER baseline method
         reward_type = 1
         to_hallucinate = True
     elif baseline_type == "ppo_only":  # baseline method
         reward_type = 1
         to_hallucinate = False
-    elif baseline_type == "quant":  # baseline method
+    elif baseline_type == "quant":  # use cycler with QS.
         reward_type = 0
+        to_hallucinate = False
+    elif baseline_type == "bhnr":
+        reward_type = -1
+        to_hallucinate = False
+    elif baseline_type == "tltl":
+        reward_type = -1
         to_hallucinate = False
     elif baseline_type == "eval": # evaluate an existing model
         assert cfg["load_path"] is not None
@@ -70,6 +77,8 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
     else:
         print("BASELINE TYPE NOT FOUND!")
         import pdb; pdb.set_trace()
+    
+    stl_formula = mtl.parse(cfg['ltl']['formula'])
     train_trajs = cfg[method]['n_traj']
     run_name = cfg['run_name'] + "_" + baseline_type + "_" + '_seed' + str(seed) + '_lambda' + str(cfg['lambda']) + "_" + datetime.now().strftime("%m%d%y_%H%M%S")
     # run_Q_STL(cfg, run, sim)
@@ -84,7 +93,7 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
         with wandb.init(project="stlq", config=OmegaConf.to_container(cfg, resolve=True), name=run_name) as run:
             if method != 'ppo':
                 # import pdb; pdb.set_trace()
-                sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=reward_type)
+                sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=reward_type, mdp_multiplier=cfg['mdp_multiplier'], stl_formula=stl_formula)
                 agent, full_orig_crewards, buchi_trajs, mdp_trajs, all_test_crewards, all_test_bvisits, all_test_mdprs = run_Q_continuous(cfg, run, sim, visualize=cfg["visualize"], save_dir=save_dir, agent=None, n_traj=train_trajs)
                 total_crewards.extend(full_orig_crewards)
                 total_buchis.extend(buchi_trajs)
@@ -93,7 +102,7 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
                 total_test_buchis.extend(all_test_bvisits)
                 total_test_mdps.extend(all_test_mdprs)
             else:
-                sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=reward_type)
+                sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=reward_type, mdp_multiplier=cfg['mdp_multiplier'], stl_formula=stl_formula)
                 agent, full_orig_crewards, buchi_trajs, mdp_trajs, all_test_crewards, all_test_bvisits, all_test_mdprs = run_ppo_continuous_2(cfg, run, sim, to_hallucinate=to_hallucinate, visualize=cfg["visualize"],
                                                                 save_dir=save_dir, save_model=True, agent=None, n_traj=train_trajs)
                 total_crewards.extend(full_orig_crewards)
@@ -111,7 +120,7 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
             run.finish()
     else:
         # in evaluation mode
-        sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=0)
+        sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=0, mdp_multiplier=cfg['mdp_multiplier'])
         traj_dir = None
         agent = PPO(sim.observation_space, 
         sim.action_space, 

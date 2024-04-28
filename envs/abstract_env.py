@@ -54,7 +54,7 @@ class AbstractEnv(metaclass=ABCMeta):
         return T, C
 
 class Simulator(gym.Env):
-    def __init__(self, mdp, automaton, lambda_val, qs_lambda=1.0, reward_type=2):
+    def __init__(self, mdp, automaton, lambda_val, qs_lambda=1.0, reward_type=2, mdp_multiplier=1.0, stl_formula=None):
         self.mdp = mdp
         self.automaton = automaton
         spaces = {
@@ -81,8 +81,11 @@ class Simulator(gym.Env):
         self.inf_often = []
         self.lambda_val = lambda_val
         self.qs_lambda_val = qs_lambda
+        self.mdp_multiplier = mdp_multiplier
         self.reward_type = reward_type
         all_accepting_cycles = []
+        self.parsed_stl = stl_formula
+        self.all_rho_vals = {ap : [] for ap in self.mdp.rho_alphabet} 
         # import pdb; pdb.set_trace()
         print("finding cycles...")
         for state in self.automaton.automaton.accepting_states:
@@ -123,7 +126,7 @@ class Simulator(gym.Env):
             self.mdp.stats_recorder.done = True
         except:
             pass
-
+        self.all_rho_vals = {ap : [] for ap in self.mdp.rho_alphabet}  # reset this for STL reward computation
         wrapped_state, _ = self.mdp.reset()
         if isinstance(wrapped_state, dict):
             state = wrapped_state['state']
@@ -269,7 +272,11 @@ class Simulator(gym.Env):
             return np.array(cycle_rewards), True
         # import pdb; pdb.set_trace()
         return np.array(cycle_rewards), False
-    
+
+    def ltl_reward_minusone(self, terminal, rhos):
+        # add some sort of flag so that the buffer knows to shape it as BHNR
+        return np.array([-1]), terminal
+
     def evaluate_buchi_edge(self, stl_node, rhos):
         cid = stl_node.id
         if cid == 'True':
@@ -302,6 +309,8 @@ class Simulator(gym.Env):
             ltl_reward, done = self.ltl_reward_2(terminal, b, b_)
         elif self.reward_type == 0: # use quantitative semantics
             ltl_reward, done = self.ltl_reward_zero(terminal, b, b_, rhos)
+        elif self.reward_type == -1: # naive QS baseline
+            ltl_reward, done = self.ltl_reward_minusone(terminal, rhos)
         else:
             ltl_reward, done = self.ltl_reward_1(terminal, b, b_) 
         # Here, we moved the lambda calculations to each reward function itself.
@@ -367,7 +376,7 @@ class Simulator(gym.Env):
         #     self.mdp.set_state(current_mdp_state)
         #     self.automaton.set_state(current_aut_state)
 
-        return {'mdp': state, 'buchi': automaton_state}, cost, done, new_info
+        return {'mdp': state, 'buchi': automaton_state}, cost * self.mdp_multiplier, done, new_info
 
     def simulate_step(self, state, buchi, action, is_eps=False):
         current_mdp_state, current_aut_state = self.mdp.get_state(), self.automaton.get_state()
@@ -389,10 +398,6 @@ class Simulator(gym.Env):
             for edge in self.automaton.edges():
                 #check if it's a valid edge
                 neighbor = edge.child.id
-                # if edge.child.accepting_vars.issubset(edge.parent.accepting_vars):
-                #     edge.give_reward = False
-                # else:
-                #     edge.give_reward = True
                 if neighbor == start_state:
                     path[vertex] = edge
                     # edge.give_reward = True  # always reward visiting the accept state

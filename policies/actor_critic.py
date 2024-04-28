@@ -8,6 +8,7 @@ import pandas as pd
 from copy import copy, deepcopy
 import time
 torch.autograd.set_detect_anomaly(True)
+from mtl.evaluator import eval_mtl, to_signal
 
 epsilon = 1e-6
 
@@ -77,19 +78,24 @@ def transform_qs_reward(ltl_reward, lambda_val, min_rho):
     return new_ltl_reward
 
 class RolloutBuffer:
-    def __init__(self, state_shp, action_shp, lambda_val, min_rho_val, max_ = 1000, to_hallucinate=False, quant=False) -> None:
+    def __init__(self, state_shp, action_shp, lambda_val, min_rho_val, rho_alphabet, parsed_formula, baseline, max_ = 1000, to_hallucinate=False) -> None:
         self.states = torch.zeros((max_,) + state_shp)
         self.trajectories = []#torch.zeros()
         self.batch_trajectories = []
+        self.all_reward_trajectories = []
+        self.all_no_reward_trajectories = []
         self.first_action_was_epsilon = False
         self.action_placeholder = np.zeros(action_shp)
         self.max_ = max_
         self.lambda_val = lambda_val
         self.min_rho_val = min_rho_val
+        self.rho_alphabet = rho_alphabet
+        self.parsed_formula = parsed_formula
         self.to_hallucinate = to_hallucinate
         self.main_trajectory = None
-        self.quant = quant
-
+        self.quant = baseline in ["quant", "bhnr", "tltl"]
+        self.baseline = baseline
+        
     def add_experience(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal, is_accepts):
         if self.to_hallucinate:
             self.update_trajectories(env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal)
@@ -113,7 +119,12 @@ class RolloutBuffer:
         #         cycle_idx = np.argmax(np.sum(cycle_rewards[previous_visit_idx:i + 1], axis=0))
         #         ltl_rewards[previous_visit_idx:i + 1] = cycle_rewards[previous_visit_idx:i + 1, cycle_idx]
         #         previous_visit_idx = i
-        if self.quant:
+        if self.baseline == "bhnr":
+            # BHNR baseline case
+            return self.create_bhnr_trajectory(traj)
+        if self.baseline == "tltl":
+            return self.create_tltl_trajectory(traj)
+        if self.baseline == "quant":
             xformed_rewards = transform_qs_reward(cycle_rewards, self.lambda_val, self.min_rho_val)
             cycle_idx = np.argmax(np.sum(xformed_rewards[previous_visit_idx:len(xformed_rewards) + 1], axis=0))
         else:
@@ -122,8 +133,49 @@ class RolloutBuffer:
         traj.ltl_rewards = list(ltl_rewards)
         assert(len(traj.ltl_rewards) == len(traj.rewards))
         return traj
-                
+    
+    def create_bhnr_trajectory(self, traj, window_size=5):
+        traj_rhos = np.array(traj.rhos)
+        stl_input = self.get_stl_input(traj_rhos)
+        if window_size is None:
+            window_size = len(traj_rhos)
+            bhnr_slices = [stl_input]
+        else:
+            bhnr_slices = []
+            for idx in range(0, len(traj_rhos), window_size):
+                bound = min(idx + window_size, len(traj_rhos))
+                bhnr_slices.append({ap: stl_input[ap][idx:bound] for ap in self.rho_alphabet})
+        qs_values = np.zeros(len(traj.rewards))
+        current = 0
+        mtl_iterator = eval_mtl(self.parsed_formula, dt=1)
+        for window in bhnr_slices:
+            stl_signal = to_signal(window)
+            robustness_obj = mtl_iterator(stl_signal)
+            bound = min(current + window_size, len(traj_rhos))
+            orig_qs_values = np.array([list(robustness_obj.data[ix].values())[0] for ix in range(current, bound)])
+            qs_values[current:current + window_size] = orig_qs_values
+            current += window_size
+        traj.ltl_rewards = list(qs_values * self.lambda_val)
+        assert(len(traj.ltl_rewards) == len(traj.rewards))
+        return traj
 
+    def create_tltl_trajectory(self, traj):
+        traj_rhos = np.array(traj.rhos)
+        stl_input = self.get_stl_input(traj_rhos)
+        qs_values = np.zeros(len(traj.rewards))
+        qs_values[-1] = self.parsed_formula(stl_input)
+        traj.ltl_rewards = list(qs_values * self.lambda_val)
+        assert(len(traj.ltl_rewards) == len(traj.rewards))
+        return traj
+
+    def get_stl_input(self, traj_rhos):
+        stl_input = {ap: [] for ap in self.rho_alphabet}
+        for idx, rhos in enumerate(traj_rhos):
+            for ridx in range(len(rhos)):
+                stl_input[self.rho_alphabet[ridx]].append((idx, rhos[ridx]))
+        return stl_input
+
+        
     def make_trajectories(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal):
         if not is_eps:
             assert act_idx == 0
@@ -215,7 +267,7 @@ class RolloutBuffer:
         for traj in new_trajectories:
             self.trajectories.append(traj)
     
-    def get_torch_data(self, gamma, N=5):
+    def get_torch_data(self, gamma, N=5, offpolicy=False):
         self.restart_traj()
         all_states = []
         all_buchis = []
@@ -228,8 +280,21 @@ class RolloutBuffer:
         all_edges = []
         all_terminals = []
 
+        if offpolicy:
+            # form a batch of trajectories
+            trajbatch = []
+            for X in [self.all_reward_trajectories, self.all_no_reward_trajectories]:
+                try:
+                    idxs = np.random.randint(0, len(X),size=N)
+                except:
+                    idxs = [] # len(self.all_reward_traj) == 0
+                for idx in idxs:
+                    traj = X[idx]
+                    trajbatch.append(traj)
+        else:
+            trajbatch = self.batch_trajectories
         # all_dones = []
-        for traj in self.batch_trajectories:
+        for traj in trajbatch:
             traj = self.create_cycler_trajectory(traj)
             rewards = []
             discounted_reward = 0
@@ -241,7 +306,10 @@ class RolloutBuffer:
                 rewards.insert(0, discounted_reward)
             for lreward in reversed(traj.ltl_rewards):
                 # print(f"reward: {reward}, discounted_reward: {discounted_reward}, gamma: {gamma}")
-                discounted_lreward = lreward + (discounted_lreward)
+                if self.quant:
+                    discounted_lreward = lreward + (gamma * discounted_lreward)
+                else:
+                    discounted_lreward = lreward + (discounted_lreward)
                 ltl_rewards.insert(0, discounted_lreward)
             all_rewards += rewards # extend list
             all_ltl_rewards += ltl_rewards
@@ -273,11 +341,15 @@ class RolloutBuffer:
     def restart_traj(self):
         #add the current trajectories to the batch's trajectories
         self.batch_trajectories.extend(self.trajectories)
+        self.all_reward_trajectories += [traj for traj in self.trajectories if traj.has_reward]
+        self.all_no_reward_trajectories += [traj for traj in self.trajectories if not traj.has_reward]
         self.trajectories = []
 
     def clear(self):
         self.batch_trajectories = []
         self.trajectories = []
+        self.all_reward_trajectories = self.all_reward_trajectories[-self.max_:]
+        self.all_no_reward_trajectories = self.all_no_reward_trajectories[-self.max_:]
 
 
 class ActorCritic(nn.Module):
