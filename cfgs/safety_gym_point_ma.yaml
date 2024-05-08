@@ -1,19 +1,15 @@
 env:
-  _target_: 'envs.safetygym_point_button.SafetyGymWrapper'
+  _target_: 'envs.safetygym_point_magoal.SafetyGymMAWrapper'
   render_mode: null # if set to 'human' it will render live
 classes:
-  continuous: 'envs.safetygym_point_button.SafetyGymWrapper'
+  continuous: 'envs.safetygym_point_magoal.SafetyGymMAWrapper'
 logger:
   dir_name: safety_gym
 ltl:
   autobuild: False
-  formula: "G(F(button1 & X(F(button0)))) & G~gremlin"
+  formula: "(G(F(r & X(F(g)))) & G(~collision))"
   oa_type: ldba
   rabinizer: ./rabinizer4/bin/ltl2ldba
-argus:
-  formula: "G (F (button1 >= 0.0) && F (button0 >= 0.0)) && G (gremlin <= 0.0)"
-  bhnr_formula: "gremlin <= 0.0 && F (button1 >= 0.0) && F (button0 >= 0.0)"
-  stl_window: 60  # approximately the time you'd expect one trajectory to be completed
 ppo:
   action_std: 0.69                  # starting std for action distribution (Multivariate Normal)
   temp_decay_type: 'None'
@@ -31,7 +27,8 @@ ppo:
   n_traj: 5000
   var_denominator: 1
   alpha: 0.2 # importance weight to entropy term
-  T: 750
+  T: 550
+  separate_vals: True
 testing:
   testing_freq__n_episodes: 25
   num_rollouts: 5
@@ -41,13 +38,13 @@ delta: .1
 n_seeds: 3
 init_seed: 100
 replay_buffer_size: 2000
-lambda: 500
+lambda: 400
 lambda_qs: 100
 mdp_multiplier: 1.0
 visualize: False
 load_path: ""  # empty if not pre-loading a model, otherwise a string path to the model.
 model_name: "safetygympol"
-run_name: "ext_hori"
+run_name: "newma"
 num_eval_trajs: 50
-eval_horizon: 1000
+eval_horizon: 2200
 baseline: "quant" # use 'ours' for no quantitative semantics.

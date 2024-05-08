@@ -12,6 +12,10 @@ ltl:
   formula: "(G(F(y & X(F(r) & X(F(g))))) & G(~b))"  #"G(F(y & X(F(r)))) & G~b" 
   oa_type: ldba
   rabinizer: ./rabinizer4/bin/ltl2ldba
+argus:
+  formula: "G (F (y >= 0.0) && F (r >= 0.0) && F (g >= 0.0)) && G (b <= 0.0)"
+  bhnr_formula: "b <= 0.0 && F (y >= 0.0) && F (r >= 0.0) && F (g >= 0.0)"
+  stl_window: 60  # approximately the time you'd expect one trajectory to be completed
 ppo:
   action_std: 0.69                 # starting std for action distribution (Multivariate Normal)
   temp_decay_type: 'None'
@@ -20,15 +24,15 @@ ppo:
   temp_decay_freq__n_episodes: 10       # action_std decay frequency (in num timesteps)
   K_epochs: 3               # update policy for K epochs in one PPO update
   batch_size: 128               # update policy for K epochs in one PPO update
-  off_policy: False
+  off_policy: True
   eps_clip: 0.4          # clip parameter for PPO
   lr_actor: 0.0003       # learning rate for actor network
   lr_critic: 0.001       # learning rate for critic network
-  update_freq__n_episodes: 3
+  update_freq__n_episodes: 1
   n_traj: 5000 
   var_denominator: 1
-  alpha: 0.25
-  T: 130
+  alpha: 0.3
+  T: 120
 q_learning:
   batches_per_update: 5
   batch_size: 128
@@ -49,16 +53,16 @@ testing:
 gamma: .98
 n_grad_updates: 1
 delta: .1
-n_seeds: 5
-init_seed: 100
+n_seeds: 2
+init_seed: 99
 replay_buffer_size: 10000
 lambda: 700.0
-lambda_qs: 100.0
+lambda_qs: 1.0
 mdp_multiplier: 1.0
 visualize: True
-load_path: ""  # 0 if not pre-loading a model, otherwise a string path to the model.
-model_name: "paper7h"
-run_name: "paper7h"
+load_path: 0  # 0 if not pre-loading a model, otherwise a string path to the model.
+model_name: "dbg"
+run_name: "dbg"
 num_eval_trajs: 50
 eval_horizon: 300
 baseline: "bhnr"  # bhnr, ours, tltl, quant, no_mdp, baseline

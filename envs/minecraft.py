@@ -132,7 +132,7 @@ class Minecraft(SlipperyGrid):
         for row, col in zip(rows, cols):
             self.coins[row, col].toggle_off(self, [row, col])
         # self.window.fig.savefig("minecraft.png")
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         return img
         
         # if save_dir is not None:

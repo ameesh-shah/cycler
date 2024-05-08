@@ -76,6 +76,10 @@ class PPO:
             lambdaval = self.qs_lambda
         else:
             lambdaval = self.ltl_lambda
+        if param['baseline'] == 'bhnr':
+            stl_window = param['argus']['stl_window']
+        else:
+            stl_window = None
         self.buffer = RolloutBuffer(
             env_space['mdp'].shape, 
             act_space['mdp'].shape,
@@ -86,6 +90,7 @@ class PPO:
             param['baseline'],
             param['replay_buffer_size'], 
             to_hallucinate,
+            stl_window=stl_window
             )
         
         self.gamma = gamma
@@ -211,7 +216,6 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
     constr_ep_reward = 0
     total_buchi_visits = 0
     # if not testing: 
-    agent.buffer.restart_traj()
     buchi_visits = []
     mdp_rewards = []
     ltl_rewards = []
@@ -292,7 +296,10 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
         img = env.render(states=states, save_dir=save_dir)
     else:
         img = None
-    ltl_ep_reward = np.array(ltl_rewards).sum(axis=0)[np.argmax(sum_xformed_rewards)]
+    # kind of a hack, but sum up from the first traj in the buffer, which should be the full trajectory with shaped reward.
+    agent.buffer.restart_traj()
+    temp = agent.buffer.create_cycler_trajectory(agent.buffer.batch_trajectories[0])
+    ltl_ep_reward = sum(temp.ltl_rewards)
     # import pdb; pdb.set_trace()
     return mdp_ep_reward, ltl_ep_reward, constr_ep_reward, total_buchi_visits, img, np.array(buchi_visits), np.array(mdp_rewards)
         

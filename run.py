@@ -4,7 +4,7 @@ import wandb
 import torch
 import numpy as np
 import os
-import mtl
+import argus
 from omegaconf import OmegaConf
 from datetime import datetime
 from envs.abstract_env import Simulator
@@ -77,8 +77,12 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
     else:
         print("BASELINE TYPE NOT FOUND!")
         import pdb; pdb.set_trace()
-    
-    stl_formula = mtl.parse(cfg['ltl']['formula'])
+    if baseline_type == "bhnr":
+        stl_formula = argus.parse_expr(cfg['argus']['bhnr_formula'])
+    elif baseline_type == "tltl":
+        stl_formula = argus.parse_expr(cfg['argus']['formula'])
+    else:
+        stl_formula = None  # won't be using this in reward computation
     train_trajs = cfg[method]['n_traj']
     run_name = cfg['run_name'] + "_" + baseline_type + "_" + '_seed' + str(seed) + '_lambda' + str(cfg['lambda']) + "_" + datetime.now().strftime("%m%d%y_%H%M%S")
     # run_Q_STL(cfg, run, sim)

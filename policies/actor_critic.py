@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 from copy import copy, deepcopy
 import time
+import argus
 torch.autograd.set_detect_anomaly(True)
-from mtl.evaluator import eval_mtl, to_signal
 
 epsilon = 1e-6
 
@@ -57,7 +57,7 @@ class Trajectory:
         self.rewards.append(r)  # want this to hold the original MDP reward
         self.cycle_rewards.append(cr)
         self.rhos.append(rhos)
-        self.has_reward = self.has_reward or (max(cr) > 0) #accepts #(max(lr) > 0)  # important: should we only use accepts or ltl_reward?
+        self.has_reward = self.has_reward or (max(cr) > 0) or accepts #accepts #(max(lr) > 0)  # important: should we only use accepts or ltl_reward?
         self.done = self.done #or (lr < 0)  # TODO: look into this for other envs?
         self.is_eps.append(is_eps)
         self.act_idxs.append(act_idx)
@@ -78,7 +78,7 @@ def transform_qs_reward(ltl_reward, lambda_val, min_rho):
     return new_ltl_reward
 
 class RolloutBuffer:
-    def __init__(self, state_shp, action_shp, lambda_val, min_rho_val, rho_alphabet, parsed_formula, baseline, max_ = 1000, to_hallucinate=False) -> None:
+    def __init__(self, state_shp, action_shp, lambda_val, min_rho_val, rho_alphabet, parsed_formula, baseline, max_ = 1000, to_hallucinate=False, stl_window=None) -> None:
         self.states = torch.zeros((max_,) + state_shp)
         self.trajectories = []#torch.zeros()
         self.batch_trajectories = []
@@ -95,6 +95,7 @@ class RolloutBuffer:
         self.main_trajectory = None
         self.quant = baseline in ["quant", "bhnr", "tltl"]
         self.baseline = baseline
+        self.window_size = stl_window
         
     def add_experience(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal, is_accepts):
         if self.to_hallucinate:
@@ -122,9 +123,9 @@ class RolloutBuffer:
         if self.baseline == "bhnr":
             # BHNR baseline case
             return self.create_bhnr_trajectory(traj)
-        if self.baseline == "tltl":
+        elif self.baseline == "tltl":
             return self.create_tltl_trajectory(traj)
-        if self.baseline == "quant":
+        elif self.baseline == "quant":
             xformed_rewards = transform_qs_reward(cycle_rewards, self.lambda_val, self.min_rho_val)
             cycle_idx = np.argmax(np.sum(xformed_rewards[previous_visit_idx:len(xformed_rewards) + 1], axis=0))
         else:
@@ -134,27 +135,19 @@ class RolloutBuffer:
         assert(len(traj.ltl_rewards) == len(traj.rewards))
         return traj
     
-    def create_bhnr_trajectory(self, traj, window_size=5):
+    def create_bhnr_trajectory(self, traj):
         traj_rhos = np.array(traj.rhos)
-        stl_input = self.get_stl_input(traj_rhos)
-        if window_size is None:
-            window_size = len(traj_rhos)
-            bhnr_slices = [stl_input]
-        else:
-            bhnr_slices = []
-            for idx in range(0, len(traj_rhos), window_size):
-                bound = min(idx + window_size, len(traj_rhos))
-                bhnr_slices.append({ap: stl_input[ap][idx:bound] for ap in self.rho_alphabet})
+        assert self.window_size is not None
+        windows = self.get_stl_input(traj_rhos)
         qs_values = np.zeros(len(traj.rewards))
         current = 0
-        mtl_iterator = eval_mtl(self.parsed_formula, dt=1)
-        for window in bhnr_slices:
-            stl_signal = to_signal(window)
-            robustness_obj = mtl_iterator(stl_signal)
-            bound = min(current + window_size, len(traj_rhos))
-            orig_qs_values = np.array([list(robustness_obj.data[ix].values())[0] for ix in range(current, bound)])
-            qs_values[current:current + window_size] = orig_qs_values
-            current += window_size
+        # mtl_iterator = eval_mtl(self.parsed_formula, dt=1)
+        for window in windows:
+            bound = min(current + self.window_size, len(traj_rhos))
+            rob_slice = argus.eval_robust_semantics(self.parsed_formula, window)
+            for indx in range(current, bound):
+                qs_values[indx] = rob_slice.at(indx)
+            current += self.window_size
         traj.ltl_rewards = list(qs_values * self.lambda_val)
         assert(len(traj.ltl_rewards) == len(traj.rewards))
         return traj
@@ -163,7 +156,7 @@ class RolloutBuffer:
         traj_rhos = np.array(traj.rhos)
         stl_input = self.get_stl_input(traj_rhos)
         qs_values = np.zeros(len(traj.rewards))
-        qs_values[-1] = self.parsed_formula(stl_input)
+        qs_values[-1] = argus.eval_robust_semantics(self.parsed_formula, stl_input).at(0)
         traj.ltl_rewards = list(qs_values * self.lambda_val)
         assert(len(traj.ltl_rewards) == len(traj.rewards))
         return traj
@@ -173,7 +166,17 @@ class RolloutBuffer:
         for idx, rhos in enumerate(traj_rhos):
             for ridx in range(len(rhos)):
                 stl_input[self.rho_alphabet[ridx]].append((idx, rhos[ridx]))
-        return stl_input
+        if self.window_size is not None:
+            windows = []
+            for idx in range(0, len(traj_rhos), self.window_size):
+                bound = min(idx + self.window_size + 1, len(traj_rhos))
+                pretrace = {ap: argus.FloatSignal.from_samples(stl_input[ap][idx:bound]) for ap in self.rho_alphabet}
+                windows.append(argus.Trace(pretrace))
+            return windows
+        else:
+            for ap in stl_input:
+                stl_input[ap] = argus.FloatSignal.from_samples(stl_input[ap])
+            return argus.Trace(stl_input)
 
         
     def make_trajectories(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal):
@@ -294,6 +297,7 @@ class RolloutBuffer:
         else:
             trajbatch = self.batch_trajectories
         # all_dones = []
+        # import pdb; pdb.set_trace()
         for traj in trajbatch:
             traj = self.create_cycler_trajectory(traj)
             rewards = []

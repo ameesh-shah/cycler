@@ -40,6 +40,8 @@ class Q_learning:
 
         self.update_target_network()
         self.num_cycles = num_cycles
+        self.is_quant = param['baseline'] == "quant"
+
         self.buffer = Buffer(envsize, self.num_cycles, param['replay_buffer_size'])
         self.good_buffer = Buffer(envsize, self.num_cycles, param['replay_buffer_size'])
         self.init_temp = param['q_learning']['init_temp']
@@ -77,7 +79,7 @@ class Q_learning:
             return action, is_eps
 
     def collect(self, s, b, a, r, lr, cr, s_, b_):
-        if max(lr) > 0:
+        if lr > 0:
             self.good_buffer.add(s, b, a, r, lr, cr, s_, b_)
         self.buffer.add(s, b, a, r, lr, cr, s_, b_)
     
@@ -158,60 +160,80 @@ class Q_learning:
                 self.iterations_since_last_target_update = 0
         return loss.detach().mean()
 
+def transform_qs_reward(ltl_reward, lambda_val, min_rho):
+    # potentially hacky, but subtract the min value from LTL reward where the values are zero for max computation purposes
+    new_ltl_reward = np.where(ltl_reward == 0, lambda_val * min_rho, ltl_reward)
+    return new_ltl_reward
+
+def create_cycler_trajectory(cycle_rewards):
+    ltl_rewards = np.zeros(len(cycle_rewards))
+    cycle_rewards = np.array(cycle_rewards)
+    previous_visit_idx = 0
+    #TODO: uncomment this and make it fast
+    # for i in range(len(cycle_rewards)):
+    #     if traj.accepts[i] > 0: # accepting state
+    #         # get best cycle from previous_visit_idx to i
+    #         cycle_idx = np.argmax(np.sum(cycle_rewards[previous_visit_idx:i + 1], axis=0))
+    #         ltl_rewards[previous_visit_idx:i + 1] = cycle_rewards[previous_visit_idx:i + 1, cycle_idx]
+    #         previous_visit_idx = i
+    cycle_idx = np.argmax(np.sum(cycle_rewards[previous_visit_idx:len(cycle_rewards) + 1], axis=0))
+    ltl_rewards[previous_visit_idx:len(cycle_rewards) + 1] = cycle_rewards[previous_visit_idx:len(cycle_rewards) + 1, cycle_idx]
+    return ltl_rewards
+
 def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False, save_dir=None, eval=False):
     states, buchis = [], []
+    next_states, next_buchis = [], []
+    actions = []
     state, _ = env.reset()
     mdp_ep_reward = 0
     ltl_ep_reward = 0
     disc_ep_reward = 0
-    states.append(state['mdp'])
-    buchis.append(state['buchi'])
     constr_ep_reward = 0
     total_buchi_visits = 0
-    if not testing: 
-        agent.buffer.restart_traj()
     buchi_visits = []
+    cycle_rewards = []
     mdp_rewards = []
-    ltl_rewards = []
     sum_xformed_rewards = np.zeros(env.num_cycles)
-    
     for t in range(1, param['q_learning']['T']):  # Don't infinite loop while learning
         action, is_eps = agent.select_action(state, testing)
         
         next_state, mdp_reward, done, info = env.step(action, is_eps)
         
         terminal = info['is_rejecting']
-        constrained_reward, _, rew_info = env.constrained_reward(terminal, state['buchi'], next_state['buchi'], mdp_reward, info["rhos"])
+        cyc_rewards, _ = env.compute_cycle_rewards(terminal, state['buchi'], next_state['buchi'], info["rhos"])
 
-        if not testing: # TRAIN ONLY
-            # Simulate step for each buchi state
-            if not is_eps:
-                for buchi_state in range(env.observation_space['buchi'].n):
-                    next_buchi_state, is_accepting = env.next_buchi(next_state['mdp'], buchi_state)
-                    new_const_rew, _, new_rew_info = env.constrained_reward(terminal, buchi_state, next_buchi_state, mdp_reward, info["rhos"])
-                    agent.collect(state['mdp'], buchi_state, action, mdp_reward, new_rew_info["ltl_reward"], new_const_rew, next_state['mdp'], next_buchi_state)
-                    if buchi_state == state['buchi']:
-                        agent.buffer.mark()
+        # if not testing: # TRAIN ONLY
+        #     # Simulate step for each buchi state
+        #     if not is_eps:
+        #         for buchi_state in range(env.observation_space['buchi'].n):
+        #             next_buchi_state, is_accepting = env.next_buchi(next_state['mdp'], buchi_state)
+        #             new_const_rew, _, new_rew_info = env.constrained_reward(terminal, buchi_state, next_buchi_state, mdp_reward, info["rhos"])
+        #             agent.collect(state['mdp'], buchi_state, action, mdp_reward, new_rew_info["ltl_reward"], new_const_rew, next_state['mdp'], next_buchi_state)
+
                 
-                    # also add epsilon transition 
-                    try:                        
-                        for eps_idx in range(env.action_space[buchi_state].n):
-                            next_buchi_state, is_accepting = env.next_buchi(state['mdp'], buchi_state, eps_idx)
-                            new_const_rew, _, new_rew_info = env.constrained_reward(terminal, buchi_state, next_buchi_state, mdp_reward, info["rhos"])
-                            agent.collect(state['mdp'], buchi_state, action, mdp_reward, new_rew_info["ltl_reward"], new_const_rew, next_state['mdp'], next_buchi_state)
-                    except:
-                        pass
+        #             # also add epsilon transition 
+        #             try:                        
+        #                 for eps_idx in range(env.action_space[buchi_state].n):
+        #                     next_buchi_state, is_accepting = env.next_buchi(state['mdp'], buchi_state, eps_idx)
+        #                     new_const_rew, _, new_rew_info = env.constrained_reward(terminal, buchi_state, next_buchi_state, mdp_reward, info["rhos"])
+        #                     agent.collect(state['mdp'], buchi_state, action, mdp_reward, new_rew_info["ltl_reward"], new_const_rew, next_state['mdp'], next_buchi_state)
+        #             except:
+        #                 pass
 
-            else:
-                # no reward for epsilon transition !
-                agent.collect(state['mdp'], buchi_state, action, mdp_reward, rew_info["ltl_reward"], constrained_reward, next_state['mdp'], next_buchi_state, info["rhos"])
-                agent.buffer.mark()
+        #     else:
+        #         # no reward for epsilon transition !
+        #         agent.collect(state['mdp'], buchi_state, action, mdp_reward, rew_info["ltl_reward"], constrained_reward, next_state['mdp'], next_buchi_state, info["rhos"])
+        states.append(state['mdp'])
+        buchis.append(state['buchi'])
+        actions.append(action)
+        next_states.append(next_state['mdp'])
+        next_buchis.append(next_state['buchi'])
+        cycle_rewards.append(cyc_rewards)
+        mdp_rewards.append(mdp_reward)
+
+
         visit_buchi = next_state['buchi'] in env.automaton.automaton.accepting_states
-        ltl_rewards.append(rew_info["ltl_reward"])
-        sum_xformed_rewards += rew_info["ltl_reward"]
-        mdp_ep_reward += rew_info["mdp_reward"]
-        ltl_ep_reward += max(rew_info["ltl_reward"])
-        constr_ep_reward += (agent.ltl_lambda * (visit_buchi) + mdp_reward)
+        mdp_ep_reward += mdp_reward
         disc_ep_reward += param['gamma']**(t-1) * mdp_reward
         buchi_visits.append(visit_buchi)
         mdp_rewards.append(mdp_reward)
@@ -219,8 +241,7 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
         if done:
             break
         state = next_state
-        states.append(state['mdp'])
-        buchis.append(state['buchi'])
+
     if visualize:
         if eval:
             save_dir = save_dir
@@ -229,11 +250,15 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
         img = env.render(states=states, save_dir=save_dir)
     else:
         img = None
-    # if ltl_ep_reward > 0:
-    #     import pdb; pdb.set_trace()
-    # if testing:
-    #     import pdb; pdb.set_trace()
-    ltl_ep_reward = np.array(ltl_rewards).sum(axis=0)[np.argmax(sum_xformed_rewards)]
+    # do cyclER
+    ltl_rewards = create_cycler_trajectory(cycle_rewards)   
+    # add it all to the buffer
+    if not testing: 
+        agent.buffer.restart_traj()
+        for i in range(len(states)):
+            agent.collect(states[i], buchis[i], actions[i], mdp_rewards[i], ltl_rewards[i], cycle_rewards[i], next_states[i], next_buchis[i])
+            ltl_ep_reward += ltl_rewards[i]
+            constr_ep_reward += (ltl_rewards[i] + mdp_rewards[i])
     return mdp_ep_reward, ltl_ep_reward, constr_ep_reward, total_buchi_visits, img, np.array(buchi_visits), np.array(mdp_rewards)
         
 def run_Q_continuous(param, runner, env, second_order = False, visualize=True, save_dir=None, save_model=True, agent=None, n_traj=None):

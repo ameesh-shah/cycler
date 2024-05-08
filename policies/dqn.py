@@ -19,7 +19,7 @@ else:
 print("============================================================================================")
 
 class Buffer:
-    def __init__(self, state_shp, num_cycles, max_ = 10000) -> None:
+    def __init__(self, state_shp, num_cycles, max_ = 10000, quant=False) -> None:
         self.max_ = max_
         self.counter = -1
         self.num_cycles = num_cycles
@@ -33,8 +33,7 @@ class Buffer:
         self.buchis = np.array([0 for _ in range(max_)])
         self.next_buchis = np.array([0 for _ in range(max_)])
 
-        self.current_traj = []
-        self.all_current_traj = []
+        self.current_traj_idx = 0
     
     def add(self, s, b, a, r, lr, cr, s_, b_):
         self.counter += 1
@@ -46,7 +45,6 @@ class Buffer:
         self.rewards[self.counter % self.max_] = r
         self.ltl_rewards[self.counter % self.max_] = lr
         self.cycle_rewards[self.counter % self.max_] = cr
-        self.all_current_traj.append(self.counter % self.max_)
     
     def mark(self):
         self.current_traj.append(self.counter % self.max_)
@@ -54,16 +52,6 @@ class Buffer:
     def restart_traj(self):
         self.current_traj = []
         self.all_current_traj = []
-    
-    def get_current_traj(self):
-        idxs = np.array(self.current_traj)
-        df = pd.DataFrame([self.states[idxs], self.buchis[idxs], self.actions[idxs], self.rewards[idxs], self.ltl_rewards[idxs], self.cycle_rewards[idxs], self.next_states[idxs], self.next_buchis[idxs]]).T
-        df.columns = ['s', 'b', 'a', 'r', 'lr', 'cr', 's_', 'b_']
-
-        idxs = np.array(self.all_current_traj)
-        df2 = pd.DataFrame([self.states[idxs], self.buchis[idxs], self.actions[idxs], self.rewards[idxs], self.ltl_rewards[idxs], self.cycle_rewards[idxs], self.next_states[idxs], self.next_buchis[idxs]]).T
-        df2.columns = ['s', 'b', 'a', 'r', 'lr', 'cr', 's_', 'b_']
-        return df, df2
     
     def get_all(self):
         idxs = np.arange(0, min(self.counter, self.max_-1))
