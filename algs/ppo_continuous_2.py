@@ -212,6 +212,8 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
     state, _ = env.reset()
     states.append(state['mdp'])
     buchis.append(state['buchi'])
+    initial_buchi = state['buchi']
+    agent.buffer.restart_traj()
     mdp_ep_reward = 0
     constr_ep_reward = 0
     total_buchi_visits = 0
@@ -297,9 +299,8 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
     else:
         img = None
     # kind of a hack, but sum up from the first traj in the buffer, which should be the full trajectory with shaped reward.
-    agent.buffer.restart_traj()
-    temp = agent.buffer.create_cycler_trajectory(agent.buffer.batch_trajectories[0])
-    ltl_ep_reward = sum(temp.ltl_rewards)
+    cycler_traj = agent.buffer.create_cycler_trajectory(agent.buffer.main_traj)
+    ltl_ep_reward = sum(cycler_traj.ltl_rewards)
     # import pdb; pdb.set_trace()
     return mdp_ep_reward, ltl_ep_reward, constr_ep_reward, total_buchi_visits, img, np.array(buchi_visits), np.array(mdp_rewards)
         

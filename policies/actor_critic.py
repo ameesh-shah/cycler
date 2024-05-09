@@ -57,7 +57,7 @@ class Trajectory:
         self.rewards.append(r)  # want this to hold the original MDP reward
         self.cycle_rewards.append(cr)
         self.rhos.append(rhos)
-        self.has_reward = self.has_reward or (max(cr) > 0) or accepts #accepts #(max(lr) > 0)  # important: should we only use accepts or ltl_reward?
+        self.has_reward = self.has_reward or (max(cr) > 0) #or accepts #accepts #(max(lr) > 0)  # important: should we only use accepts or ltl_reward?
         self.done = self.done #or (lr < 0)  # TODO: look into this for other envs?
         self.is_eps.append(is_eps)
         self.act_idxs.append(act_idx)
@@ -108,6 +108,7 @@ class RolloutBuffer:
             
             traj = self.trajectories[-1]
             traj.add(s, b, a, r, cr, s_, b_, rhos, is_eps, act_idx, logprobs[b][act_idx], edge, terminal, is_accepts)
+        self.main_traj.add(s, b, a, r, cr, s_, b_, rhos, is_eps, act_idx, logprobs[b][act_idx], edge, terminal, is_accepts)
 
     def create_cycler_trajectory(self, traj):
         ltl_rewards = np.zeros(len(traj.rewards))
@@ -348,6 +349,7 @@ class RolloutBuffer:
         self.all_reward_trajectories += [traj for traj in self.trajectories if traj.has_reward]
         self.all_no_reward_trajectories += [traj for traj in self.trajectories if not traj.has_reward]
         self.trajectories = []
+        self.main_traj = Trajectory(self.action_placeholder)
 
     def clear(self):
         self.batch_trajectories = []

@@ -22,7 +22,9 @@ class SafetyGymMAWrapper:
         self.current_cost = None
         self.reset()
         # import pdb; pdb.set_trace()
-        self.rho_alphabet = ['r', 'b', 'g', 'p', 'collision', 'vase']
+        self.rho_alphabet = ['r1', 'r2', 'b1', 'b2',
+                              'g1', 'g2', 'p1', 'p2', 
+                              'collision', 'vase']
         self.rho_min = -5.66 # hardcoded, but the max distance to anything in the boxed-in env
         self.rho_max = 0 # the closest you can get to a region is 0
 
@@ -62,12 +64,8 @@ class SafetyGymMAWrapper:
         """Checks which button was just contacted."""
         object_labels = {}
         task = self.original_env.task
-        rho_regions = ['r', 'b', 'g', 'p']
         # check if any regions have been visited
-        region_visited = self.original_env.task.goal_achieved
-        for regionidx in range(len(region_visited)):
-            if region_visited[regionidx]:
-                object_labels[rho_regions[regionidx]] = 1
+        object_labels.update(self.original_env.task.goal_achieved_per_agent)
         for contact in task.data.contact[: task.data.ncon]:
             geom_ids = [contact.geom1, contact.geom2]
             geom_names = sorted([task.model.geom(g).name for g in geom_ids])
@@ -84,16 +82,12 @@ class SafetyGymMAWrapper:
         return labels, {}
     
     def compute_rho(self):
-        all_robustness_vals = []
+        a1red, a2red = self.dist_goal_red()
+        a1blue, a2blue = self.dist_goal_blue()
+        a1green, a2green = self.dist_goal_green()
+        a1purple, a2purple = self.dist_goal_purple()
         #for each button, get the distance to the button
-        reddist = -1 * min(self.original_env.task.dist_goal_red()) # we want to minimize the distance, so give it as a negative reward
-        all_robustness_vals.append(reddist)
-        bluedist = -1 * min(self.original_env.task.dist_goal_blue())
-        all_robustness_vals.append(bluedist)
-        greendist = -1 * min(self.original_env.task.dist_goal_green())
-        all_robustness_vals.append(greendist)
-        purpledist = -1 * min(self.original_env.task.dist_goal_purple())
-        all_robustness_vals.append(purpledist)
+        all_robustness_vals = [a1red, a2red, a1blue, a2blue, a1green, a2green, a1purple, a2purple]
         # check if agents are colliding with one another
         agent0_pos = self.original_env.task.agent.pos_0
         agent1_pos = self.original_env.task.agent.pos_1
@@ -136,7 +130,7 @@ class SafetyGymMAWrapper:
         # import pdb; pdb.set_trace()
         # reward = reward["agent_0"] + reward["agent_1"]
         terminated = terminated["agent_0"] or terminated["agent_1"]
-        return self.state_wrapper(next_state), new_reward, terminated, self.info
+        return self.state_wrapper(next_state), info["agent_0"]["reward_sum"], terminated, self.info
     
     def get_state(self):
         return self.state_wrapper(self.state)

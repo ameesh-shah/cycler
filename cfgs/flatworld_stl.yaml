@@ -49,20 +49,20 @@ q_learning:
   T: 60
 testing:
   testing_freq__n_episodes: 10
-  num_rollouts: 5
+  num_rollouts: 10
 gamma: .98
 n_grad_updates: 1
 delta: .1
-n_seeds: 2
+n_seeds: 3
 init_seed: 99
 replay_buffer_size: 10000
-lambda: 700.0
-lambda_qs: 1.0
+lambda: 300.0
+lambda_qs: 100.0
 mdp_multiplier: 1.0
 visualize: True
 load_path: 0  # 0 if not pre-loading a model, otherwise a string path to the model.
 model_name: "dbg"
-run_name: "dbg"
+run_name: "why"
 num_eval_trajs: 50
 eval_horizon: 300
-baseline: "bhnr"  # bhnr, ours, tltl, quant, no_mdp, baseline
+baseline: "ours"  # bhnr, ours, tltl, quant, no_mdp, baseline

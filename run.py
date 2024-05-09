@@ -115,7 +115,7 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
                 total_test_crewards.extend(all_test_crewards)
                 total_test_buchis.extend(all_test_bvisits)
                 total_test_mdps.extend(all_test_mdprs)
-            if baseline_type == "ours":
+            if baseline_type == "ours" or baseline_type == "quant":
                 traj_dir = save_dir + '/trajectories'
                 if not os.path.exists(traj_dir):
                     os.mkdir(traj_dir)
