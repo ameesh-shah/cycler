@@ -255,7 +255,7 @@ class Simulator(gym.Env):
                 # self.previous_rhos[idx] = rho
                 if b_ == buchi_cycle[b].child.id:
                     # import pdb; pdb.set_trace()
-                    delta = delta + (1.0 * self.qs_lambda_val  / self.acc_cycle_edge_counts[idx])
+                    delta = delta + (1.0 * self.lambda_val  / self.acc_cycle_edge_counts[idx])
                     cycle_rewards.append(delta)
                     new_rho = self.evaluate_buchi_edge(buchi_cycle[b_].stl, rhos)
                     self.previous_rhos[idx] = new_rho
