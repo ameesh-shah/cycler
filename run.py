@@ -22,7 +22,6 @@ def main(cfg):
     np.random.seed(seeds[0])
     automaton = AutomatonRunner(Automaton(**cfg['ltl']))
     # make logging dir for wandb to pull from, if necessary
-    save_dir = os.path.join(os.getcwd(), 'experiments', cfg['run_name'] + "_" + cfg["baseline"] + "_" + '_seed' + str(seed) + '_lambda' + str(cfg['lambda']))
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
     baseline = cfg["baseline"]
