@@ -18,3 +18,4 @@ wandb
 omegaconf
 moviepy
 torchrl
+argus-temporal-logic
