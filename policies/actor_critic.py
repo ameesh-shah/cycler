@@ -42,6 +42,7 @@ class Trajectory:
         self.counter = 0
         self.done = False
         self.has_reward = False
+        self.has_accepting = False
         self.action_placeholder = action_placeholder # should be of MDP action shape
     
     def add(self, s, b, a, r, cr, s_, b_, rhos, is_eps, act_idx, logprob, edge, terminal, accepts):
@@ -58,6 +59,7 @@ class Trajectory:
         self.cycle_rewards.append(cr)
         self.rhos.append(rhos)
         self.has_reward = self.has_reward or (max(cr) > 0) #or accepts #accepts #(max(lr) > 0)  # important: should we only use accepts or ltl_reward?
+        self.has_accepting = self.has_accepting or accepts
         self.done = self.done #or (lr < 0)  # TODO: look into this for other envs?
         self.is_eps.append(is_eps)
         self.act_idxs.append(act_idx)
@@ -84,6 +86,7 @@ class RolloutBuffer:
         self.batch_trajectories = []
         self.all_reward_trajectories = []
         self.all_no_reward_trajectories = []
+        self.all_accept_trajectories = []
         self.first_action_was_epsilon = False
         self.action_placeholder = np.zeros(action_shp)
         self.max_ = max_
@@ -147,7 +150,7 @@ class RolloutBuffer:
             bound = min(current + self.window_size, len(traj_rhos))
             rob_slice = argus.eval_robust_semantics(self.parsed_formula, window)
             for indx in range(current, bound):
-                qs_values[indx] = rob_slice.at(indx)
+                qs_values[indx] = (0 - rob_slice.at(indx)) / (0 - self.min_rho_val) # normalize between 0 and 1
             current += self.window_size
         traj.ltl_rewards = list(qs_values * self.lambda_val)
         assert(len(traj.ltl_rewards) == len(traj.rewards))
@@ -157,7 +160,8 @@ class RolloutBuffer:
         traj_rhos = np.array(traj.rhos)
         stl_input = self.get_stl_input(traj_rhos)
         qs_values = np.zeros(len(traj.rewards))
-        qs_values[-1] = argus.eval_robust_semantics(self.parsed_formula, stl_input).at(0)
+        # normalize between 0 and 1
+        qs_values[-1] = (0 - argus.eval_robust_semantics(self.parsed_formula, stl_input).at(0)) / (0 - self.min_rho_val)
         traj.ltl_rewards = list(qs_values * self.lambda_val)
         assert(len(traj.ltl_rewards) == len(traj.rewards))
         return traj
@@ -287,7 +291,11 @@ class RolloutBuffer:
         if offpolicy:
             # form a batch of trajectories
             trajbatch = []
-            for X in [self.all_reward_trajectories, self.all_no_reward_trajectories]:
+            if len(self.all_accept_trajectories) != 0:
+                rewardtrajs = self.all_accept_trajectories
+            else:
+                rewardtrajs = self.all_reward_trajectories
+            for X in [rewardtrajs, self.all_no_reward_trajectories]:
                 try:
                     idxs = np.random.randint(0, len(X),size=N)
                 except:
@@ -346,6 +354,7 @@ class RolloutBuffer:
     def restart_traj(self):
         #add the current trajectories to the batch's trajectories
         self.batch_trajectories.extend(self.trajectories)
+        self.all_accept_trajectories += [traj for traj in self.trajectories if traj.has_accepting]
         self.all_reward_trajectories += [traj for traj in self.trajectories if traj.has_reward]
         self.all_no_reward_trajectories += [traj for traj in self.trajectories if not traj.has_reward]
         self.trajectories = []
@@ -356,6 +365,7 @@ class RolloutBuffer:
         self.trajectories = []
         self.all_reward_trajectories = self.all_reward_trajectories[-self.max_:]
         self.all_no_reward_trajectories = self.all_no_reward_trajectories[-self.max_:]
+        self.all_accept_trajectories = self.all_accept_trajectories[-self.max_:]
 
 
 class ActorCritic(nn.Module):

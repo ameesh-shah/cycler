@@ -439,6 +439,11 @@ def eval_agent(param, env, agent, visualize=False, save_dir=None):
             if img_path is not None:
                 im.save(img_path)
     mdp_test_reward, ltl_test_reward, test_creward, test_bvisits, img, bvisit_traj, mdp_traj = rollout(env, agent, param, i_episode, None, testing=True, visualize=visualize, eval=True)
+    if img is not None:
+        im = Image.fromarray(img)
+        if save_dir is not None:
+            img_path = save_dir + "/eval_traj_fixed.png"
+            im.save(img_path)
     print("Buchi Visits and MDP Rewards for fixed (test) policy at Eval Time:")
     print("Buchi Visits:", test_bvisits)
     print("MDP Reward:", mdp_test_reward)
