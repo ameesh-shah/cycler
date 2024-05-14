@@ -101,6 +101,8 @@ class RolloutBuffer:
         self.window_size = stl_window
         
     def add_experience(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal, is_accepts):
+        if self.baseline == "no_mdp":
+            r = 0
         if self.to_hallucinate:
             self.update_trajectories(env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal)
             self.make_trajectories(env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal)
