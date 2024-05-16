@@ -56,6 +56,9 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
     elif baseline_type == "no_mdp":
         reward_type = 3
         to_hallucinate = True
+    elif baseline_type == "cycler_no_mdp":
+        reward_type = 4
+        to_hallucinate = True
     elif baseline_type == "baseline":  # LCER baseline method
         reward_type = 1
         to_hallucinate = True
@@ -126,12 +129,7 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
         # in evaluation mode
         sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=0, mdp_multiplier=cfg['mdp_multiplier'])
         traj_dir = None
-        agent = PPO(sim.observation_space, 
-        sim.action_space, 
-        cfg['gamma'], 
-        cfg, 
-        False,
-        model_path=cfg['load_path'])
+        agent = None
         # define agent here and load the existing model path (need to import from policy files)
     if method != 'ppo':
         test_bvisits, test_mdprew, buchi_visits, mdp_reward, combined_rewards = eval_q_agent(cfg, sim, agent, save_dir=traj_dir)

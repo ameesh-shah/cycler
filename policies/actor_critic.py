@@ -101,7 +101,7 @@ class RolloutBuffer:
         self.window_size = stl_window
         
     def add_experience(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal, is_accepts):
-        if self.baseline == "no_mdp":
+        if self.baseline == "no_mdp" or self.baseline == "cycler_no_mdp":
             r = 0
         if self.to_hallucinate:
             self.update_trajectories(env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal)
@@ -318,7 +318,10 @@ class RolloutBuffer:
             for reward in reversed(traj.rewards):
                 # print(f"reward: {reward}, discounted_reward: {discounted_reward}, gamma: {gamma}")
                 discounted_reward = reward + (gamma * discounted_reward)
-                rewards.insert(0, discounted_reward)
+                if self.baseline == "no_mdp" or self.baseline == "cycler_no_mdp":
+                    rewards.insert(0, 0)
+                else:
+                    rewards.insert(0, discounted_reward)
             for lreward in reversed(traj.ltl_rewards):
                 # print(f"reward: {reward}, discounted_reward: {discounted_reward}, gamma: {gamma}")
                 if self.quant:
