@@ -75,7 +75,7 @@ class Trajectory:
         return deepcopy(self)
 
 def transform_qs_reward(ltl_reward, lambda_val, min_rho):
-    # potentially hacky, but subtract the min value from LTL reward where the values are zero for max computation purposes
+    # subtract the min value from LTL reward where the values are zero for max computation purposes
     new_ltl_reward = np.where(ltl_reward == 0, lambda_val * min_rho, ltl_reward)
     return new_ltl_reward
 
@@ -101,8 +101,6 @@ class RolloutBuffer:
         self.window_size = stl_window
         
     def add_experience(self, env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal, is_accepts):
-        if self.baseline == "no_mdp" or self.baseline == "cycler_no_mdp":
-            r = 0
         if self.to_hallucinate:
             self.update_trajectories(env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal)
             self.make_trajectories(env, s, b, a, r, cr, s_, b_, rhos, act_idx, is_eps, logprobs, edge, terminal)
@@ -119,7 +117,7 @@ class RolloutBuffer:
         ltl_rewards = np.zeros(len(traj.rewards))
         cycle_rewards = np.array(traj.cycle_rewards)
         previous_visit_idx = 0
-        #TODO: uncomment this and make it fast
+        # if you only have one accepting state, you can comment the below block out for speedup.
         # for i in range(len(cycle_rewards)):
         #     if traj.accepts[i] > 0: # accepting state
         #         # get best cycle from previous_visit_idx to i
@@ -152,7 +150,7 @@ class RolloutBuffer:
             bound = min(current + self.window_size, len(traj_rhos))
             rob_slice = argus.eval_robust_semantics(self.parsed_formula, window)
             for indx in range(current, bound):
-                qs_values[indx] = (0 - rob_slice.at(indx)) / (0 - self.min_rho_val) # normalize between 0 and 1
+                qs_values[indx] = (rob_slice.at(indx) - self.min_rho_val) / (0 - self.min_rho_val) # normalize between 0 and 1
             current += self.window_size
         traj.ltl_rewards = list(qs_values * self.lambda_val)
         assert(len(traj.ltl_rewards) == len(traj.rewards))
@@ -163,7 +161,7 @@ class RolloutBuffer:
         stl_input = self.get_stl_input(traj_rhos)
         qs_values = np.zeros(len(traj.rewards))
         # normalize between 0 and 1
-        qs_values[-1] = (0 - argus.eval_robust_semantics(self.parsed_formula, stl_input).at(0)) / (0 - self.min_rho_val)
+        qs_values[-1] = (argus.eval_robust_semantics(self.parsed_formula, stl_input).at(0)  - self.min_rho_val) / (0 - self.min_rho_val)
         traj.ltl_rewards = list(qs_values * self.lambda_val)
         assert(len(traj.ltl_rewards) == len(traj.rewards))
         return traj
@@ -318,7 +316,7 @@ class RolloutBuffer:
             for reward in reversed(traj.rewards):
                 # print(f"reward: {reward}, discounted_reward: {discounted_reward}, gamma: {gamma}")
                 discounted_reward = reward + (gamma * discounted_reward)
-                if self.baseline == "no_mdp" or self.baseline == "cycler_no_mdp":
+                if self.baseline == "no_mdp":
                     rewards.insert(0, 0)
                 else:
                     rewards.insert(0, discounted_reward)

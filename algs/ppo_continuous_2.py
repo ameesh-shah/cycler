@@ -155,7 +155,6 @@ class PPO:
             # Evaluating old actions and values
             logprobs, state_values, dist_entropy = self.policy.evaluate(
                 old_states, old_buchis, old_actions, old_action_idxs)
-                
             # optimize the combined reward
             crewards = lrewards + rewards
             # match state_values tensor dimensions with rewards tensor
@@ -421,7 +420,7 @@ def eval_agent(param, env, agent, visualize=False, save_dir=None):
         env.mdp.rho_min - env.mdp.rho_max,
         env.mdp.rho_alphabet,
         env.parsed_stl,
-        True,
+        False,
         model_path=param['load_path'])
     fixed_state, _ = env.reset()
     crewards = []

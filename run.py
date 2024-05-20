@@ -33,8 +33,8 @@ def main(cfg):
             os.mkdir(save_dir)
         results_dict = {}
         results_path = save_dir + '/results_dict_{}.pkl'.format(seed)
-        torch.manual_seed(seeds[0])
-        np.random.seed(seed)
+        torch.manual_seed(seeds[0]) # just the environment changes per seed in an experiment.
+        np.random.seed(seeds)
         env = hydra.utils.instantiate(cfg.env)
         reward_sequence, buchi_traj_sequence, mdp_traj_sequence, test_reward_sequence, test_buchi_sequence, test_mdp_sequence, eval_results = run_baseline(cfg, env, automaton, save_dir, baseline, seed, method=method)
         results_dict["crewards"] = reward_sequence
@@ -55,9 +55,6 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
         to_hallucinate = True
     elif baseline_type == "no_mdp":
         reward_type = 3
-        to_hallucinate = True
-    elif baseline_type == "cycler_no_mdp":
-        reward_type = 4
         to_hallucinate = True
     elif baseline_type == "baseline":  # LCER baseline method
         reward_type = 1
