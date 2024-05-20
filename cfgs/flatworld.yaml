@@ -1,32 +1,49 @@
 env:
-  file: <class 'envs.flatworld.flatworld'>
+  _target_: 'envs.base_envs.flatworld.FlatWorld'
+  render_mode: 'human'
+  continuous_actions: True
+classes:
+  discrete: <class 'envs.flatworld.flatworld'>
+  continuous: <class 'envs.flatworld.flatworld_continuous'>
 logger:
-  dir_name: FlatWorld
-eps: 10
-gamma: .99
-T: 50
+  dir_name: flatworld_stl
 ltl:
   autobuild: False
-  formula: "G F b"
+  formula: "(G(F(y & X(F(r) & X(F(g))))) & G(~b))"  #"G(F(y & X(F(r)))) & G~b" 
   oa_type: ldba
   rabinizer: ./rabinizer4/bin/ltl2ldba
-reinforce:
-  lr: 1.0e-2
-robustness:
-  lr_rho: 1.0e-2
+argus:
+  formula: "G (F (y >= 0.0) && F (r >= 0.0) && F (g >= 0.0)) && G (b <= 0.0)"
+  bhnr_formula: "b <= 0.0 && F (y >= 0.0) && F (r >= 0.0) && F (g >= 0.0)"
+  stl_window: 60  # BHNR horizon window size
 ppo:
-  action_std: 0.6                    # starting std for action distribution (Multivariate Normal)
-  action_std_decay_rate: 0.95       # linearly decay action_std (action_std = action_std - action_std_decay_rate)
-  min_action_std: 0.05             # minimum action_std (stop decay after action_std <= min_action_std)
-  action_std_decay_freq: 200       # action_std decay frequency (in num timesteps)
-  K_epochs: 1               # update policy for K epochs in one PPO update
-  eps_clip: 0.2          # clip parameter for PPO
-  lr_actor: 0.003       # learning rate for actor network
-  lr_critic: 0.01       # learning rate for critic network
-  update_timestep: 1 # T * 4
-batch_size: 1
+  K_epochs: 3               # update policy for K epochs in one PPO update
+  batch_size: 128               # update policy for K epochs in one PPO update
+  off_policy: True
+  eps_clip: 0.4          # clip parameter for PPO
+  lr_actor: 0.0003       # learning rate for actor network
+  lr_critic: 0.001       # learning rate for critic network
+  update_freq__n_episodes: 1
+  n_traj: 5000 
+  var_denominator: 1
+  alpha: 0.3
+  T: 120
+testing:
+  testing_freq__n_episodes: 10
+  num_rollouts: 10
+gamma: .98
 n_grad_updates: 1
-n_traj: 5000
 delta: .1
-n_seeds: 1
-init_seed: 314
+n_seeds: 3
+init_seed: 99
+replay_buffer_size: 10000
+lambda: 2000.0
+lambda_qs: 100.0
+mdp_multiplier: 1.0
+visualize: True
+load_path: 0  # 0 if not pre-loading a model, otherwise a string path to the model.
+model_name: "norew"
+run_name: "eval_no_Reward"
+num_eval_trajs: 20
+eval_horizon: 300
+baseline: "quant"  # bhnr, ours, tltl, quant, no_mdp, baseline

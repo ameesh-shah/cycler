@@ -9,8 +9,6 @@ from omegaconf import OmegaConf
 from datetime import datetime
 from envs.abstract_env import Simulator
 from automaton import Automaton, AutomatonRunner
-from algs.Q_value_iter_2 import run_value_iter
-from algs.Q_continuous import run_Q_continuous, eval_q_agent
 from algs.ppo_continuous_2 import run_ppo_continuous_2, eval_agent, PPO
 import pickle as pkl
 ROOT = Path(__file__).parent
@@ -53,7 +51,7 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
     if baseline_type == "ours" or baseline_type == "cycler":
         reward_type = 2
         to_hallucinate = True
-    elif baseline_type == "no_mdp":
+    elif baseline_type == "no_mdp": # LCER baseline method without mdp
         reward_type = 3
         to_hallucinate = True
     elif baseline_type == "baseline":  # LCER baseline method
@@ -85,8 +83,7 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
         stl_formula = None  # won't be using this in reward computation
     train_trajs = cfg[method]['n_traj']
     run_name = cfg['run_name'] + "_" + baseline_type + "_" + '_seed' + str(seed) + '_lambda' + str(cfg['lambda']) + "_" + datetime.now().strftime("%m%d%y_%H%M%S")
-    # run_Q_STL(cfg, run, sim)
-    # copt = ConstrainedOptimization(cfg, run, sim)
+
     total_crewards = []
     total_buchis = []
     total_mdps = []
@@ -95,26 +92,15 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
     total_test_mdps = []
     if baseline_type != "eval":
         with wandb.init(project="stlq", config=OmegaConf.to_container(cfg, resolve=True), name=run_name) as run:
-            if method != 'ppo':
-                # import pdb; pdb.set_trace()
-                sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=reward_type, mdp_multiplier=cfg['mdp_multiplier'], stl_formula=stl_formula)
-                agent, full_orig_crewards, buchi_trajs, mdp_trajs, all_test_crewards, all_test_bvisits, all_test_mdprs = run_Q_continuous(cfg, run, sim, visualize=cfg["visualize"], save_dir=save_dir, agent=None, n_traj=train_trajs)
-                total_crewards.extend(full_orig_crewards)
-                total_buchis.extend(buchi_trajs)
-                total_mdps.extend(mdp_trajs)
-                total_test_crewards.extend(all_test_crewards)
-                total_test_buchis.extend(all_test_bvisits)
-                total_test_mdps.extend(all_test_mdprs)
-            else:
-                sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=reward_type, mdp_multiplier=cfg['mdp_multiplier'], stl_formula=stl_formula)
-                agent, full_orig_crewards, buchi_trajs, mdp_trajs, all_test_crewards, all_test_bvisits, all_test_mdprs = run_ppo_continuous_2(cfg, run, sim, to_hallucinate=to_hallucinate, visualize=cfg["visualize"],
-                                                                save_dir=save_dir, save_model=True, agent=None, n_traj=train_trajs)
-                total_crewards.extend(full_orig_crewards)
-                total_buchis.extend(buchi_trajs)
-                total_mdps.extend(mdp_trajs)
-                total_test_crewards.extend(all_test_crewards)
-                total_test_buchis.extend(all_test_bvisits)
-                total_test_mdps.extend(all_test_mdprs)
+            sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=reward_type, mdp_multiplier=cfg['mdp_multiplier'], stl_formula=stl_formula)
+            agent, full_orig_crewards, buchi_trajs, mdp_trajs, all_test_crewards, all_test_bvisits, all_test_mdprs = run_ppo_continuous_2(cfg, run, sim, to_hallucinate=to_hallucinate, visualize=cfg["visualize"],
+                                                            save_dir=save_dir, save_model=True, agent=None, n_traj=train_trajs)
+            total_crewards.extend(full_orig_crewards)
+            total_buchis.extend(buchi_trajs)
+            total_mdps.extend(mdp_trajs)
+            total_test_crewards.extend(all_test_crewards)
+            total_test_buchis.extend(all_test_bvisits)
+            total_test_mdps.extend(all_test_mdprs)
             if baseline_type == "ours" or baseline_type == "quant":
                 traj_dir = save_dir + '/trajectories'
                 if not os.path.exists(traj_dir):
@@ -128,10 +114,8 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
         traj_dir = None
         agent = None
         # define agent here and load the existing model path (need to import from policy files)
-    if method != 'ppo':
-        test_bvisits, test_mdprew, buchi_visits, mdp_reward, combined_rewards = eval_q_agent(cfg, sim, agent, save_dir=traj_dir)
-    else:
-        test_bvisits, test_mdprew, buchi_visits, mdp_reward, combined_rewards = eval_agent(cfg, sim, agent, save_dir=traj_dir)
+
+    test_bvisits, test_mdprew, buchi_visits, mdp_reward, combined_rewards = eval_agent(cfg, sim, agent, save_dir=traj_dir)
     return total_crewards, total_buchis, total_mdps, total_test_crewards, total_test_buchis, total_test_mdps, (test_bvisits, test_mdprew, buchi_visits, mdp_reward, combined_rewards)
     
 

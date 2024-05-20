@@ -18,17 +18,6 @@ fontsize = 24
 matplotlib.rc('xtick', labelsize=fontsize) 
 matplotlib.rc('ytick', labelsize=fontsize) 
 
-# # figure settings
-# plt.rcParams.update({
-#     "text.usetex": True,
-#     "font.family": "sans-serif",
-#     "font.sans-serif": ["Helvetica"]})
-# # for Palatino and other serif fonts use:
-# plt.rcParams.update({
-#     "text.usetex": True,
-#     "font.family": "serif",
-#     "font.serif": ["Palatino"],
-# })
 sns.set_theme()
 
 class FlatWorld(gym.Env):
@@ -69,25 +58,14 @@ class FlatWorld(gym.Env):
             # up, right, down, left, nothing
             self.action_space = spaces.Discrete(5)            
 
-        # self.obs_1 = np.array([0.0, 0.9, -1.0, -0.5])     # red box in bottom right corner
-        # self.obs_2 = np.array([.2, 0.7, 0.8, 1.2])        # green box in top right corner
-        # self.obs_3 = np.array([0.0, 0.0, 0.4])            # blue circle in the center
-        # self.obs_4 = np.array([-1.0, -0.7, -0.2, 0.5])    # orange box on the left
-
-        # self.goal = np.array([1, 1, .2])
         self.obs_1 = np.array([.9/2, -1.5/2., .3])     # red box in bottom right corner
         self.obs_2 = np.array([.9/2, 1., .3])        # green box in top right corner
         self.obs_3 = np.array([0.0, 0.0, 0.8])            # blue circle in the center
-        #self.obs_3 = np.array([0, -2.7/2, 0.35])      # blue circle for REWARD offset from center.
         self.obs_4 = np.array([-1.7/2, .3/2, .3])    # orange box on the left
-        # self.obs_5 = np.array([0, -2.7/2, 0.35])     # reward region: purple
-        # self.obs_6 = np.array([-2.7/2, 2.7/2, 0.35]) # reward region: 
         self.timestep = 0  # set time to keep count of STL values
         
         self.circles = [(self.obs_1, 'r'), (self.obs_2, 'g'), (self.obs_4, 'y'), (self.obs_3, 'b')]
-        #self.circles = [(self.obs_1, 'r'), (self.obs_4, 'y'), (self.obs_3, 'b')]
         self.circles_map = {'r': self.obs_1, 'g': self.obs_2, 'y': self.obs_4, 'b': self.obs_3}
-        #self.circles_map = {'r': self.obs_1, 'y': self.obs_4, 'b': self.obs_3}
         # generate reward regions randomly
         self.generate_random_rewards()
         #self.generate_gridded_rewards()
@@ -113,7 +91,6 @@ class FlatWorld(gym.Env):
     
     def compute_rho(self):
         # return a map from string to value for each robustness fxn
-        # normalization = np.linalg.norm(self.observation_space.high - self.observation_space.low)
         all_robustness_vals = np.zeros(len(self.circles_map))
         for idx, (region_symbol, circle) in enumerate(self.circles_map.items()):
             coordinates = circle[:2]
@@ -143,7 +120,7 @@ class FlatWorld(gym.Env):
         seed: Optional[int] = None,
         options: Optional[dict] = None,
     ):
-        # # randomly initialize the state
+        # uncomment this if you want to randomly initialize the state
         # random_x = np.random.uniform(0.8, 2.0)
         # random_y = np.random.uniform(0.8, 2.0)
         # random_x_side = np.random.choice([-1, 1])
@@ -152,7 +129,6 @@ class FlatWorld(gym.Env):
         # self.init_states =  [np.array([-1, -1]), np.array([-1, 1]), np.array([1, -1]), np.array([1, 1])]
         # self.state = self.init_states[np.random.choice(len(self.init_states))]
         self.state = np.array([-1, -1])
-        # reset the collected STL rho values
 
         self.timestep = 0
 
@@ -225,28 +201,13 @@ class FlatWorld(gym.Env):
         # plot the environment given the obstacles
         # plt.figure(figsize=(10,10))
         for obs, color in self.circles:           
-            # theta = np.linspace( 0 , 2 * np.pi , 150 )
- 
-            # radius = obs[2]
-            
-            # x = radius * np.cos( theta ) + obs[0]
-            # y = radius * np.sin( theta ) + obs[1]
- 
-            # # x, y = [obs[0] + obs[2]*np.cos(t) for t in np.arange(0,3*np.pi,0.1)], [obs[1] + obs[2]*np.sin(t) for t in np.arange(0,3*np.pi,0.1)]
-            # self.ax.plot(x, y, c=color, linewidth=2)
+
 
             patch = plt.Circle((obs[0], obs[1]), obs[2], color=color, fill=True, alpha=.2)
             # # x, y = [obs[0] + obs[2]*np.cos(t) for t in np.arange(0,3*np.pi,0.1)], [obs[1] + obs[2]*np.sin(t) for t in np.arange(0,3*np.pi,0.1)]
             # # self.ax.plot(x, y, c=color, linewidth=2)
             self.ax.add_patch(patch)
         
-        # for obs, color in [(self.goal, 'orange')]:
-        #     self.ax.plot([obs[0] + obs[2]*np.cos(t) for t in np.arange(0,3*np.pi,0.1)], [obs[1] + obs[2]*np.sin(t) for t in np.arange(0,3*np.pi,0.1)], c=color, linewidth=2)
-        
-        # plt.plot([self.obs_1[0], self.obs_1[0], self.obs_1[1], self.obs_1[1], self.obs_1[0]], [self.obs_1[2], self.obs_1[3], self.obs_1[3], self.obs_1[2], self.obs_1[2]], c="red", linewidth=5)
-        # plt.plot([self.obs_2[0], self.obs_2[0], self.obs_2[1], self.obs_2[1], self.obs_2[0]], [self.obs_2[2], self.obs_2[3], self.obs_2[3], self.obs_2[2], self.obs_2[2]], c="green", linewidth=5)
-        # plt.plot([self.obs_4[0], self.obs_4[0], self.obs_4[1], self.obs_4[1], self.obs_4[0]], [self.obs_4[2], self.obs_4[3], self.obs_4[3], self.obs_4[2], self.obs_4[2]], c="orange", linewidth=5)
-        # plt.plot([self.obs_3[0] + self.obs_3[2]*np.cos(t) for t in np.arange(0,3*np.pi,0.1)], [self.obs_3[1] + self.obs_3[2]*np.sin(t) for t in np.arange(0,3*np.pi,0.1)], c="blue", linewidth=5)
 
         # for state in states:
         #     self.ax.scatter([state[0]], [state[1]], s=100, marker='-', c="g")

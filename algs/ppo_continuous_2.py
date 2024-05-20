@@ -47,9 +47,6 @@ class PPO:
         self.batch_size = param['ppo']['batch_size']
         self.eps_clip = param['ppo']['eps_clip']
         self.has_continuous_action_space = True
-        action_std_init = param['ppo']['action_std']
-        self.original_temp = param['ppo']['action_std']
-        self.temp = param['ppo']['action_std']
         self.alpha = param['ppo']['alpha']
         self.ltl_lambda = param['lambda']
         self.original_lambda = param['lambda']
@@ -58,7 +55,7 @@ class PPO:
         self.rho_alphabet = rho_alphabet
         self.stl_phi = stl_phi
 
-        self.policy = ActorCritic(env_space, act_space, action_std_init, param).to(device)
+        self.policy = ActorCritic(env_space, act_space, param).to(device)
         if model_path and model_path != "":
             self.policy.load_state_dict(torch.load(model_path, map_location=torch.device(device)))
         
@@ -70,7 +67,7 @@ class PPO:
                         {'params': self.policy.critic.parameters(), 'lr': lr_critic},
                     ])
 
-        self.policy_old = ActorCritic(env_space, act_space, action_std_init, param).to(device)
+        self.policy_old = ActorCritic(env_space, act_space, param).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         if param['baseline'] in ['quant', 'bhnr', 'tltl']:
             lambdaval = self.qs_lambda
@@ -96,11 +93,6 @@ class PPO:
         self.gamma = gamma
         self.num_updates_called = 0
         self.MseLoss = nn.MSELoss()
-    
-    def set_action_std(self, new_action_std):
-        self.action_std = new_action_std
-        self.policy.set_action_std(new_action_std)
-        self.policy_old.set_action_std(new_action_std)
 
     def select_action(self, state, is_testing):
         mdp_state = state['mdp']
@@ -117,22 +109,6 @@ class PPO:
         
     def save_model(self, save_path):
         torch.save(self.policy.state_dict(), save_path)
-    
-    def decay_temp(self, decay_rate, min_temp, decay_type):
-        
-        if decay_type == 'linear':
-            self.temp = self.temp - decay_rate
-        elif decay_type == 'exponential':
-            self.temp = self.temp * decay_rate
-        else:
-            pass # in the learned entropy setting
-        
-        if (self.temp <= min_temp):
-            self.temp = min_temp
-        
-        self.temp = round(self.temp, 4)
-        #print(f'Setting temperature: {self.temp}')
-        self.set_action_std(self.temp)
 
     def update(self):
         self.num_updates_called += 1
@@ -200,8 +176,6 @@ class PPO:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         # clear buffer
-        # if self.num_updates_called > 125 and self.num_updates_called % 25 == 0:
-        #     import pdb; pdb.set_trace()
         self.buffer.clear()
         return loss.mean(), {"policy_grad": policy_grad.detach().mean(), "val_loss": normalized_val_loss.detach().item(), "entropy_loss": entropy_loss.detach().mean()}
     
@@ -271,11 +245,7 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
             terminal,
             visit_buchi
             )
-        # total_experience_time += time.time() - tic
 
-        # if visualize:
-        #     env.render()
-        # agent.buffer.atomics.append(info['signal'])
         mdp_ep_reward += mdp_reward
         sum_xformed_rewards += og_ltl_r
         ltl_rewards.append(og_ltl_r)
@@ -297,7 +267,7 @@ def rollout(env, agent, param, i_episode, runner, testing=False, visualize=False
         img = env.render(states=states, save_dir=save_dir)
     else:
         img = None
-    # kind of a hack, but sum up from the first traj in the buffer, which should be the full trajectory with shaped reward.
+    # kind of a hack, but we keep a 'main traj' fir bookkeeping which should be the full trajectory with shaped reward.
     cycler_traj = agent.buffer.create_cycler_trajectory(agent.buffer.main_traj)
     ltl_ep_reward = sum(cycler_traj.ltl_rewards)
     # import pdb; pdb.set_trace()
@@ -338,10 +308,6 @@ def run_ppo_continuous_2(param, runner, env, to_hallucinate=False, visualize=Fal
             losstuple = agent.update()
             if losstuple is not None:
                 current_loss, loss_info = losstuple
-        # toc2 = time.time() - tic
-        # print(toc, toc2)
-        if i_episode % param['ppo']['temp_decay_freq__n_episodes'] == 0:
-            agent.decay_temp(param['ppo']['temp_decay_rate'], param['ppo']['min_action_temp'], param['ppo']['temp_decay_type'])
             
         all_crewards.append(creward)
         all_bvisit_trajs.append(bvisit_traj)
@@ -383,7 +349,6 @@ def run_ppo_continuous_2(param, runner, env, to_hallucinate=False, visualize=Fal
                         'LossVal': current_loss,
                         "PolicyGradLoss": loss_info["policy_grad"],
                         "MSEValLoss": loss_info["val_loss"],
-                        'ActionTemp': agent.temp,
                         'EntropyLoss': loss_info["entropy_loss"],
                         "Test_R_LTL": test_avg_ltl_reward,
                         "Test_R_MDP": test_avg_mdp_reward,
@@ -399,7 +364,6 @@ def run_ppo_continuous_2(param, runner, env, to_hallucinate=False, visualize=Fal
                         'LossVal': current_loss,
                         "PolicyGradLoss": loss_info["policy_grad"],
                         "MSEValLoss": loss_info["val_loss"],
-                        'ActionTemp': agent.temp,
                         'EntropyLoss': loss_info["entropy_loss"],
                         "Test_R_LTL": test_avg_ltl_reward,
                         "Test_R_MDP": test_avg_mdp_reward,

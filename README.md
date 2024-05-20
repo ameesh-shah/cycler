@@ -34,9 +34,11 @@ https://www7.in.tum.de/~kretinsk/rabinizer4.html
 
 Note: Must have java >8 installed as well to run Rabinizer.
 
+We ask that you create an 'experiments' directory in the main directory (this one) before running, as this will be where results and models are stored.
+
 # Run:
 
 ```
-python3 run.py hydra.job.chdir=False hydra.output_subdir=null --config-name=flatworld_stl.yaml
+python3 run.py hydra.job.chdir=False hydra.output_subdir=null --config-name=flatworld.yaml
 ```
 
