@@ -15,14 +15,14 @@ argus:
   bhnr_formula: "F (r >= 0.0) && F (g >= 0.0) && F (b >= 0.0) && F (p >= 0.0)"
   stl_window: 700  # BHNR horizon window size
 ppo:
-  K_epochs: 3              # update policy for K epochs in one PPO update
+  K_epochs: 5              # update policy for K epochs in one PPO update
   batch_size: 128               # update policy for K epochs in one PPO update
   off_policy: True
   eps_clip: 0.4          # clip parameter for PPO
   lr_actor: 0.0025      # learning rate for actor network
   lr_critic: 0.0125       # learning rate for critic network
   update_timestep: 1 # T * 4
-  update_freq__n_episodes: 5
+  update_freq__n_episodes: 3
   n_traj: 5000
   var_denominator: 1
   alpha: 0.3 # importance weight to entropy term
@@ -36,8 +36,8 @@ delta: .1
 n_seeds: 3
 init_seed: 98
 replay_buffer_size: 500
-lambda: 300
-lambda_qs: 100.0
+lambda: 400
+lambda_qs: 200.0
 mdp_multiplier: 1.0
 visualize: False
 load_path: 0  # empty if not pre-loading a model, otherwise a string path to the model.

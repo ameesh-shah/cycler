@@ -41,9 +41,9 @@ lambda: 2000.0
 lambda_qs: 100.0
 mdp_multiplier: 1.0
 visualize: True
-load_path: 0  # 0 if not pre-loading a model, otherwise a string path to the model.
+load_path: "experiments/NO_REWARD_CYCLER_ours__seed684673_lambda400.0/dbg.pt"  # 0 if not pre-loading a model, otherwise a string path to the model.
 model_name: "norew"
-run_name: "eval_no_Reward"
+run_name: "eval_img_test"
 num_eval_trajs: 20
 eval_horizon: 300
-baseline: "quant"  # bhnr, ours, tltl, quant, no_mdp, baseline
+baseline: "eval"  # bhnr, ours, tltl, quant, no_mdp, baseline

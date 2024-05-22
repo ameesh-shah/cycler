@@ -22,7 +22,7 @@ ppo:
   lr_actor: 0.002       # learning rate for actor network
   lr_critic: 0.0125       # learning rate for critic network
   update_timestep: 1 # T * 4
-  update_freq__n_episodes: 5
+  update_freq__n_episodes: 3
   n_traj: 5000
   var_denominator: 1
   alpha: 0.2 # importance weight to entropy term

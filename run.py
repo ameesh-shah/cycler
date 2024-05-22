@@ -111,7 +111,9 @@ def run_baseline(cfg, env, automaton, save_dir, baseline_type, seed, method="ppo
     else:
         # in evaluation mode
         sim = Simulator(env, automaton, cfg['lambda'], qs_lambda=cfg['lambda_qs'], reward_type=0, mdp_multiplier=cfg['mdp_multiplier'])
-        traj_dir = None
+        traj_dir = save_dir + '/trajectories'
+        if not os.path.exists(traj_dir):
+            os.mkdir(traj_dir)
         agent = None
         # define agent here and load the existing model path (need to import from policy files)
 
