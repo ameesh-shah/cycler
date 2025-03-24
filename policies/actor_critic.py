@@ -47,7 +47,6 @@ class Trajectory:
     
     def add(self, s, b, a, r, cr, s_, b_, rhos, is_eps, act_idx, logprob, edge, terminal, accepts):
         self.counter += 1
-        # if r > 0: import pdb; pdb.set_trace()
         if isinstance(s, dict):
             s = s['state']
         self.states.append(s)
@@ -58,9 +57,9 @@ class Trajectory:
         self.rewards.append(r)  # want this to hold the original MDP reward
         self.cycle_rewards.append(cr)
         self.rhos.append(rhos)
-        self.has_reward = self.has_reward or (max(cr) > 0) #or accepts #accepts #(max(lr) > 0)  # important: should we only use accepts or ltl_reward?
+        self.has_reward = self.has_reward or (max(cr) > 0) #or accepts
         self.has_accepting = self.has_accepting or accepts
-        self.done = self.done #or (lr < 0)  # TODO: look into this for other envs?
+        self.done = self.done #or (lr < 0) 
         self.is_eps.append(is_eps)
         self.act_idxs.append(act_idx)
         self.logprobs.append(logprob)
@@ -145,7 +144,6 @@ class RolloutBuffer:
         windows = self.get_stl_input(traj_rhos)
         qs_values = np.zeros(len(traj.rewards))
         current = 0
-        # mtl_iterator = eval_mtl(self.parsed_formula, dt=1)
         for window in windows:
             bound = min(current + self.window_size, len(traj_rhos))
             rob_slice = argus.eval_robust_semantics(self.parsed_formula, window)
@@ -204,7 +202,6 @@ class RolloutBuffer:
                 # also add epsilon transition 
                 try:                        
                     for eps_idx in range(env.action_space[buchi_state].n):
-                        # import pdb; pdb.set_trace()
                         traj = Trajectory(self.action_placeholder)
                         
                         # make epsilon transition
@@ -236,10 +233,7 @@ class RolloutBuffer:
                 # First add epsilon transitions if possible
                 try:                        
                     for eps_idx in range(env.action_space[buchi_state].n):
-                        # tic = time.time()
                         traj_copy = traj.copy()
-                        # traj_copy = Trajectory(self.action_placeholder)
-                        # print('CopyTime', time.time() - tic)
                         
                         # make epsilon transition
                         next_buchi_state, accepting_rejecting_neutal = env.next_buchi(s, buchi_state, eps_idx)
@@ -305,8 +299,6 @@ class RolloutBuffer:
                     trajbatch.append(traj)
         else:
             trajbatch = self.batch_trajectories
-        # all_dones = []
-        # import pdb; pdb.set_trace()
         for traj in trajbatch:
             traj = self.create_cycler_trajectory(traj)
             rewards = []
@@ -337,7 +329,6 @@ class RolloutBuffer:
             all_next_buchis += traj.next_buchis
             all_edges += traj.edges
             all_terminals += traj.terminals
-                # all_dones += traj.dones
         if len(all_rewards) != len(all_ltl_rewards):
             import pdb; pdb.set_trace()
         all_states = torch.squeeze(torch.tensor(np.array(all_states))).detach().to(device).type(torch.float)
@@ -348,11 +339,9 @@ class RolloutBuffer:
         all_logprobs = torch.squeeze(torch.tensor(all_logprobs)).detach().to(device)
         all_rewards = torch.tensor(np.array(all_rewards), dtype=torch.float32).to(device)
         all_ltl_rewards = torch.tensor(np.array(all_ltl_rewards), dtype=torch.float32).to(device)
-        # all_edges = torch.tensor(np.array(all_edges), dtype=torch.float32).to(device)
-        # edge is a new data structure, not torch tensor
         all_edges = np.array(all_edges) 
-        all_terminals = torch.tensor(np.array(all_terminals), dtype=torch.bool).to(device) #TODO: check make the terminal to bool type
-        return all_states, all_buchis, all_actions, all_next_buchis, all_rewards, all_ltl_rewards, all_action_idxs, all_logprobs, all_edges, all_terminals #, all_dones
+        all_terminals = torch.tensor(np.array(all_terminals), dtype=torch.bool).to(device)
+        return all_states, all_buchis, all_actions, all_next_buchis, all_rewards, all_ltl_rewards, all_action_idxs, all_logprobs, all_edges, all_terminals
 
     def restart_traj(self):
         #add the current trajectories to the batch's trajectories
@@ -372,20 +361,16 @@ class RolloutBuffer:
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, action_std_init, param, has_continuous_action_space=True):
+    def __init__(self, state_dim, action_dim, param, has_continuous_action_space=True):
         super(ActorCritic, self).__init__()
 
         self.has_continuous_action_space = has_continuous_action_space        
-        self.temp = action_std_init
-        self.min_temp = param['ppo']['min_action_temp']
         self.var_denominator = param['ppo']['var_denominator']
         self.state_dim = state_dim
         if has_continuous_action_space:
             self.action_dim = action_dim['mdp'].shape[0]
-            self.action_var = torch.full((self.action_dim,), action_std_init * action_std_init, requires_grad=True).to(device)
         else:
             self.action_dim = action_dim['total']
-            self.action_var = torch.full((self.action_dim,), action_std_init * action_std_init, requires_grad=True).to(device)
         # actor
         if has_continuous_action_space :
             self.actor = nn.Sequential(
@@ -408,10 +393,7 @@ class ActorCritic(nn.Module):
 
             with torch.no_grad():
                 # bias towards no epsilons in the beginning
-                self.action_switch.bias[::action_dim['total']] = 5.
-
-                # bias towards left turn
-                                        
+                self.action_switch.bias[::action_dim['total']] = 5.                                        
 
             self.main_shp = (state_dim['buchi'].n, self.action_dim)
             self.shp = (state_dim['buchi'].n, action_dim['total'])
@@ -436,15 +418,6 @@ class ActorCritic(nn.Module):
                         nn.Tanh(),
                         nn.Linear(64, state_dim['buchi'].n)
                     )
-    
-    def set_action_std(self, new_action_std):
-        if self.has_continuous_action_space:
-            self.temp = new_action_std
-            self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std, requires_grad=True).to(device)
-        else:
-            print("--------------------------------------------------------------------------------------------")
-            print("WARNING : Calling ActorCritic::set_action_std() on discrete action space policy")
-            print("--------------------------------------------------------------------------------------------")
 
     def forward(self):
         raise NotImplementedError
@@ -457,13 +430,6 @@ class ActorCritic(nn.Module):
             body = self.actor(state)
             action_head = self.mean_head(body)
             action_mean = torch.reshape(action_head, self.main_shp)[buchi_state]
-
-
-
-            # action_switch_head_all = torch.reshape(self.action_switch(body), self.shp)
-            # masked_head_all = torch.masked.MaskedTensor(action_switch_head_all, self.mask)
-            # probs_all = F.softmax(masked_head_all)
-            # probs = probs_all.to_tensor(0)
             
             action_switch_head_all = torch.reshape(self.action_switch(body), self.shp)
             action_switch = action_switch_head_all#[buchi_state]
@@ -472,13 +438,8 @@ class ActorCritic(nn.Module):
             ### Bias against epsilon actions by multiplication by +10
             # action_switch[..., 0] *= torch.sign(action_switch[..., 0]) * 100
             
-            # Fix
             probs = self.masked_softmax(action_switch, mask, -1)
-            # probs = probs_all.squeeze()
 
-            # action_switch_head = action_switch_head_all[buchi_state]
-            # masked_head = action_switch_head[:self.mask[buchi_state].sum()]
-            # probs = F.softmax(masked_head)
             try:
                 action_or_eps = Categorical(probs[buchi_state])
             except:
@@ -487,13 +448,10 @@ class ActorCritic(nn.Module):
 
             if act_or_eps == 0:
                 # else:
-                if self.temp > self.min_temp:  # don't use the learned entropy here.
-                    cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-                else:
-                    action_log_std_head = self.log_std_head(body)
-                    action_log_std = torch.reshape(action_log_std_head, self.main_shp)[buchi_state] / self.var_denominator
-                    std = action_log_std.exp()
-                    cov_mat = torch.diag_embed(std)
+                action_log_std_head = self.log_std_head(body)
+                action_log_std = torch.reshape(action_log_std_head, self.main_shp)[buchi_state] / self.var_denominator
+                std = action_log_std.exp()
+                cov_mat = torch.diag_embed(std)
                 dist = MultivariateNormal(action_mean, cov_mat)
                 #samp_dist = Normal(action_mean, cov_mat)
                 action = dist.rsample()
@@ -507,7 +465,7 @@ class ActorCritic(nn.Module):
                 action = act_or_eps
                 action_logprob = action_or_eps.log_prob(act_or_eps)
             
-        else:
+        else: # note: discrete action spaces are not fully tested for this implementation.
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
             action = dist.sample()
@@ -559,16 +517,11 @@ class ActorCritic(nn.Module):
             dist_coinflip = Categorical(probs)
             
 
-            action_var = self.action_var.expand_as(action_mean)
             action_std = action_log_std.exp()
-            if self.temp > self.min_temp:
-                cov_mat = torch.diag_embed(action_var).to(device)
-                dist = MultivariateNormal(action_mean, cov_mat)
-            else:
-                cov_mat = torch.diag_embed(action_std).to(device)
-                dist = MultivariateNormal(action_mean, cov_mat)
+
+            cov_mat = torch.diag_embed(action_std).to(device)
+            dist = MultivariateNormal(action_mean, cov_mat)
             dist_gaussian = dist.entropy()#.mean()
-            #cov_mat = torch.diag_embed(action_var).to(device)
 
             
             action_logprobs = dist.log_prob(action)
@@ -585,17 +538,15 @@ class ActorCritic(nn.Module):
             # State values 
             state_values = torch.take_along_dim(self.critic(state), buchi.squeeze(-1), dim=1).squeeze()
 
-            # Entropy. Overapprox, not exact. RECHECK
+            # Entropy. Overapprox, not exact.
             dist_coinflip = dist_coinflip.entropy().squeeze()
-            #dist_gaussian = dist.entropy()#.mean()
             dist_entropy = dist_coinflip + dist_gaussian * probs[:, 0]
             #dist_entropy = dist_gaussian  #TODO: fix this!
-            #import pdb; pdb.set_trace()
 
             # For Single Action Environments.
             if self.action_dim == 1:
                 action = action.reshape(-1, self.action_dim)
-        else:
+        else: # note: discrete action spaces are not fully tested for this implementation.
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
             log_probs = dist.log_prob(action)

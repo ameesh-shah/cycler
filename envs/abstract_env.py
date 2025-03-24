@@ -86,8 +86,9 @@ class Simulator(gym.Env):
         all_accepting_cycles = []
         self.parsed_stl = stl_formula
         self.all_rho_vals = {ap : [] for ap in self.mdp.rho_alphabet} 
-        # import pdb; pdb.set_trace()
         print("finding cycles...")
+        # all initial paths lie on cycles for us, so we don't have to do the redundant computation.
+        # if this is not the case, initial paths will need to be considered.
         for state in self.automaton.automaton.accepting_states:
             cycles = self.find_min_accepting_cycles(state)
             all_accepting_cycles.extend(cycles)
@@ -101,7 +102,6 @@ class Simulator(gym.Env):
         if self.reward_type % 2 != 0: ## IF we have a fixed reward:
             self.num_cycles = 1 # only reward one thing
             self.acc_cycle_edge_counts = [1.]
-        # import pdb; pdb.set_trace()
     
     def get_rewarding_edge_counts(self):
         return [len(cyc) for cyc in self.all_accepting_cycles]
@@ -309,7 +309,7 @@ class Simulator(gym.Env):
             ltl_reward, done = self.ltl_reward_2(terminal, b, b_)
         elif self.reward_type == 0: # use quantitative semantics
             ltl_reward, done = self.ltl_reward_zero(terminal, b, b_, rhos)
-        elif self.reward_type == -1: # naive QS baseline
+        elif self.reward_type == -1: # naive QS baselines
             ltl_reward, done = self.ltl_reward_minusone(terminal, rhos)
         else:
             ltl_reward, done = self.ltl_reward_1(terminal, b, b_) 
@@ -334,7 +334,7 @@ class Simulator(gym.Env):
             else:
                 automaton_state, edge = self.automaton.epsilon_step(action - 1) # continuous
 
-            automaton_state, edge = self.automaton.step(label) # Do we take this step right now???
+            automaton_state, edge = self.automaton.step(label) # Do we take this step right now
             cost = 0
             done = False
             info = self.mdp.get_info()
